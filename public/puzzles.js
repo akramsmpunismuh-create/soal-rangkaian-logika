@@ -51,21 +51,31 @@
   function svg(p) {
     let w = '', sh = '';
 
-    // 1. Koordinat dasar untuk variabel A, B, C
+    // 1. Grid Y untuk input A, B, C
     const yMap = { A: 35, B: 85, C: 135 };
     const xLabel = 20;
     const busX = { A: 48, B: 62, C: 76 };
 
-    // Gambar label input A, B, C beserta jalur awalnya
     p.vars.forEach(v => {
-      w += `<path d="M${xLabel} ${yMap[v]} H${busX[v]}"/>`;
-      sh += `<text x="${xLabel - 8}" y="${yMap[v] + 5}" text-anchor="middle" font-size="15" font-weight="700" fill="#1d3557" stroke="none">${v}</text>`;
+      if (yMap[v] !== undefined) {
+        w += `<path d="M${xLabel} ${yMap[v]} H${busX[v]}"/>`;
+        sh += `<text x="${xLabel - 8}" y="${yMap[v] + 5}" text-anchor="middle" font-size="15" font-weight="700" fill="#1d3557" stroke="none">${v}</text>`;
+      }
     });
 
-    // 2. Fungsi Rekursif untuk menggambar skema logika
-    const walk = (node) => {
+    // 2. Traversal Rekursif dengan Normalisasi Node (Mengatasi string "NOT A")
+    const walk = (rawNode) => {
+      let node = rawNode;
+      // PERBAIKAN UTAMA: Normalisasi jika string diawali 'NOT '
+      if (typeof node === 'string' && node.startsWith('NOT ')) {
+        node = { op: 'NOT', a: node.replace('NOT ', '') };
+      }
+
+      // Jika murni variabel 'A', 'B', atau 'C'
       if (typeof node === 'string') {
-        return { x: busX[node], y: yMap[node], isVar: true, v: node, level: 0 };
+        const varY = yMap[node] !== undefined ? yMap[node] : 85;
+        const varX = busX[node] !== undefined ? busX[node] : 48;
+        return { x: varX, y: varY, isVar: true, v: node, level: 0 };
       }
 
       const isUnary = node.op === 'NOT';
@@ -76,12 +86,10 @@
       const rightL = right ? right.level : 0;
       const level = 1 + Math.max(leftL, rightL);
 
-      // Posisi X gerbang berdasarkan levelnya
       const gateX = 120 + level * 95;
 
-      // Posisi Y gerbang
-      let gateY = left.y;
-      if (!isUnary && right) {
+      let gateY = left ? left.y : 85;
+      if (!isUnary && right && left) {
         gateY = (left.y + right.y) / 2;
       }
 
@@ -94,11 +102,11 @@
         const pinY = isUnary ? gateY : (idx === 0 ? gateY - 9 : gateY + 9);
 
         if (child.isVar) {
-          const bx = busX[child.v];
-          w += `<path d="M${bx} ${yMap[child.v]} V${pinY} H${inX}"/>`;
-          w += `<circle cx="${bx}" cy="${yMap[child.v]}" r="3" fill="#1d3557"/>`;
+          const varY = yMap[child.v] !== undefined ? yMap[child.v] : 85;
+          const bx = busX[child.v] !== undefined ? busX[child.v] : 48;
+          w += `<path d="M${bx} ${varY} V${pinY} H${inX}"/>`;
+          w += `<circle cx="${bx}" cy="${varY}" r="3" fill="#1d3557"/>`;
         } else {
-          // Garis antar-gerbang dibuat lurus siku (orthogonal)
           const midX = child.x + Math.max(12, (inX - child.x) / 2);
           w += `<path d="M${child.x} ${child.y} H${midX} V${pinY} H${inX}"/>`;
         }
@@ -109,10 +117,8 @@
       return { x: outX, y: gateY, isVar: false, level };
     };
 
-    // 3. Render dari root
     const rootOut = walk(p.tree);
 
-    // 4. Output Q
     w += `<path d="M${rootOut.x} ${rootOut.y} H${rootOut.x + 30}"/>`;
     sh += `<text x="${rootOut.x + 45}" y="${rootOut.y + 5}" text-anchor="middle" font-size="16" font-weight="700" fill="#e63946" stroke="none">Q</text>`;
 
