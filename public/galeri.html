@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Galeri 120 soal</title>
+<style>body{font:15px system-ui,sans-serif;margin:16px;color:#1d2b3a}.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.c{border:1px solid #cfdbe6;border-radius:10px;padding:10px;break-inside:avoid}.c h3{margin:0 0 6px;font-size:15px}
+table{border-collapse:collapse;font-size:12px;margin-top:6px}td,th{border:1px solid #cfdbe6;padding:2px 6px;text-align:center}th{background:#eaf3fb}
+input,button{padding:8px;font-size:15px}</style></head><body>
+<h1>Galeri 120 soal (khusus guru)</h1>
+<p id="lock"><input id="k" type="password" placeholder="Kunci admin"> <button id="b">Buka</button> <span id="e"></span></p>
+<div class="g" id="g"></div>
+<script src="puzzles.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+async function open_() {
+  const r = await fetch('/api/admin', { headers: { 'x-admin-key': $('k').value } });
+  if (!r.ok) return $('e').textContent = 'Kunci salah';
+  $('lock').hidden = true;
+  $('g').innerHTML = LOGIC.PUZZLES.map(p => { const t = LOGIC.table(p);
+    return `<div class="c"><h3>#${p.id + 1} &nbsp; ${p.text}</h3>${LOGIC.svg(p)}<table><tr>${[...t.vars, ...t.cols].map(h => `<th>${h}</th>`).join('')}</tr>` +
+      t.rows.map(x => `<tr>${x.map(v => `<td>${v}</td>`).join('')}</tr>`).join('') + '</table></div>'; }).join('');
+}
+$('b').onclick = open_; $('k').onkeydown = e => e.key === 'Enter' && open_();
+</script></body></html>

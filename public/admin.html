@@ -8,7 +8,12 @@ input,button{padding:8px;font-size:15px}.bar{display:flex;flex-wrap:wrap;gap:8px
 .red{background:#c62828;color:#fff;border:0;border-radius:6px;cursor:pointer}</style></head><body>
 <h1>Rekap tugas</h1>
 <div class="bar"><input id="k" type="password" placeholder="Kunci admin"> <button id="b">Muat data</button>
-<button id="zip">Unduh semua foto (ZIP)</button> <button id="del" class="red">Hapus yang dicentang</button></div>
+<button id="zip">Unduh semua foto (ZIP)</button> <button id="del" class="red">Hapus yang dicentang</button>
+<label>Pengurangan bila pakai bantuan: <input id="pen" type="number" value="10" min="0" max="100" style="width:64px"> poin</label>
+<a href="galeri.html" target="_blank">Galeri 120 soal</a></div>
+<details style="margin-top:10px"><summary><b>Daftar siswa</b> (<span id="rc">0</span> nama)</summary>
+<p>Satu siswa per baris: <code>Nama, Kelas, PIN</code>. Kelas dan PIN boleh kosong (PIN misalnya nomor absen). Bisa ditempel langsung dari Excel/Google Sheets (3 kolom).</p>
+<textarea id="ro" rows="10" style="width:100%"></textarea><br><button id="rs">Simpan daftar</button></details>
 <p id="s"></p><table id="t"></table>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="puzzles.js"></script>
@@ -18,25 +23,36 @@ const esc = s => String(s).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';'
 const pic = u => u ? `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt=""></a>` : '-';
 const H = () => ({ 'x-admin-key': $('k').value, 'Content-Type': 'application/json' });
 const keyOf = p => { const t = LOGIC.table(p); return t.rows.map(r => r.slice(t.vars.length).join('')).join(''); };
-const score = x => { const k = keyOf(LOGIC.PUZZLES[x.idx]); return [...k].filter((c, i) => c === x.ans[i]).length + '/' + k.length; };
+const hit = x => { const k = keyOf(LOGIC.PUZZLES[x.idx]); return [[...k].filter((c, i) => c === x.ans[i]).length, k.length]; };
+const score = x => hit(x).join('/');
+const nilai = x => { const [c, n] = hit(x); return Math.max(0, Math.round(c / n * 100) - (x.helped ? +$('pen').value || 0 : 0)); }; // 0-100 dikurangi penalti bantuan
+const hms = x => x.submittedAt ? new Date(x.submittedAt).toLocaleTimeString('en-GB') : ''; // jam:menit:detik
 let rows = [];
 
 async function load() {
   const r = await fetch('/api/admin', { headers: H() }), d = await r.json();
   if (!r.ok) return $('s').textContent = d.error;
   rows = d.rows.sort((a, b) => a.name.localeCompare(b.name));
-  $('s').textContent = `${rows.length} siswa sudah mengambil soal, sisa soal: ${d.left}`;
-  $('t').innerHTML = '<tr><th><input type="checkbox" id="all"><th>Nama<th>Soal<th>Bantuan gambar<th>Isian tabel<th>Screenshot<th>Kunci jawaban</tr>' +
+  $('rc').textContent = d.roster.length;
+  if (!$('ro').dataset.d) $('ro').value = d.roster.map(x => [x.name, x.kelas, x.pin].join('\t')).join('\n');
+  $('s').textContent = `${rows.length} dari ${d.roster.length} siswa di daftar sudah mengambil soal, sisa soal: ${d.left}`;
+  $('t').innerHTML = '<tr><th><input type="checkbox" id="all"><th>Nama<th>Soal<th>Bantuan gambar<th>Isian tabel<th>Nilai<th>Waktu kirim<th>Screenshot<th>Kunci jawaban</tr>' +
     rows.map(x => {
       const p = LOGIC.PUZZLES[x.idx], t = LOGIC.table(p);
-      return `<tr><td><input type="checkbox" class="sel" value="${esc(x.id)}"><td>${esc(x.name)}<td>${esc(p.text)}<td>${x.helped ? '<span class="h">Ya, kurangi nilai</span>' : '-'}` +
-        `<td>${x.ans ? score(x) + ' benar' : '-'}<td>${pic(x.app)}` +
+      return `<tr><td><input type="checkbox" class="sel" value="${esc(x.id)}"><td>${esc(x.name)}${x.kelas ? ' (' + esc(x.kelas) + ')' : ''}<td>${esc(p.text)}<td>${x.helped ? '<span class="h">Ya, kurangi nilai</span>' : '-'}` +
+        `<td>${x.ans ? score(x) + ' benar' : '-'}<td><b>${x.ans ? nilai(x) : '-'}</b><td>${x.submittedAt ? hms(x) + '<br><small>' + new Date(x.submittedAt).toLocaleDateString('en-GB') + '</small>' : '-'}<td>${pic(x.app)}` +
         `<td><details><summary>lihat</summary><pre>${t.vars.join(' ')} | ${t.cols.join(' | ')}\n${t.rows.map((r, i) => r.join(' ') + (x.ans ? '  || siswa: ' + [...x.ans.slice(i * t.cols.length, (i + 1) * t.cols.length)].join(' ') : '')).join('\n')}</pre></details></tr>`;
     }).join('');
   $('all').onchange = e => document.querySelectorAll('.sel').forEach(c => c.checked = e.target.checked);
 }
 
-$('b').onclick = load;
+$('b').onclick = load; $('pen').onchange = load;
+$('ro').oninput = () => $('ro').dataset.d = 1;
+$('rs').onclick = async () => {
+  const r = await fetch('/api/admin', { method: 'POST', headers: H(), body: JSON.stringify({ action: 'roster', text: $('ro').value }) }), d = await r.json();
+  if (!r.ok) return $('s').textContent = d.error;
+  delete $('ro').dataset.d; await load(); $('s').textContent += ` (daftar disimpan: ${d.saved} siswa)`;
+};
 $('k').onkeydown = e => e.key === 'Enter' && load();
 
 $('del').onclick = async () => {
@@ -54,12 +70,12 @@ $('zip').onclick = async () => {
   try {
     if (!rows.length) await load();
     const z = new JSZip(), jobs = [], c = v => { v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
-    const csv = ['nama,soal,bantuan,skor_isian,jawaban_isian,waktu_kirim'];
+    const csv = ['nama,soal,bantuan,skor_isian,nilai,jawaban_isian,waktu_kirim'];
     rows.forEach(x => {
-      const p = LOGIC.PUZZLES[x.idx], base = (x.name.replace(/[^\p{L}\p{N} _-]+/gu, '').trim().replace(/\s+/g, '_') || 'siswa') + '_soal-' + String(x.idx + 1).padStart(3, '0');
+      const p = LOGIC.PUZZLES[x.idx], base = ((x.name + ' ' + (x.kelas || '')).replace(/[^\p{L}\p{N} _-]+/gu, '').trim().replace(/\s+/g, '_') || 'siswa') + '_soal-' + String(x.idx + 1).padStart(3, '0') + (x.submittedAt ? '_' + hms(x).replace(/:/g, '-') : '');
       const ext = u => u.split('?')[0].split('.').pop();
       if (x.app) jobs.push([x.app, `${base}_screenshot.${ext(x.app)}`]);
-      csv.push([c(x.name), c(p.text), x.helped ? 'ya' : 'tidak', x.ans ? score(x) : '', x.ans || '', x.submittedAt ? new Date(x.submittedAt).toLocaleString('id-ID') : 'belum'].join(','));
+      csv.push([c(x.name + (x.kelas ? ' ' + x.kelas : '')), c(p.text), x.helped ? 'ya' : 'tidak', x.ans ? score(x) : '', x.ans ? nilai(x) : '', x.ans || '', x.submittedAt ? new Date(x.submittedAt).toLocaleDateString('en-GB') + ' ' + hms(x) : 'belum'].join(','));
     });
     const total = jobs.length; let n = 0;
     const worker = async () => { while (jobs.length) {
