@@ -1,78 +1,127 @@
-function svg(p) {
+// Membuat 120 soal unik (maks 3 input A,B,C & 3 gerbang) + gambar SVG-nya. Dipakai siswa & admin.
+(function (root) {
+  const V = ['A', 'B', 'C'], OPS = ['AND', 'OR', 'XOR'];
+  const ev = (n, e) => { if (typeof n == 'string') return e[n]; const a = ev(n.a, e); if (n.op == 'NOT') return !a; const b = ev(n.b, e); return n.op == 'AND' ? a && b : n.op == 'OR' ? a || b : a !== b; };
+  const str = (n, top) => typeof n == 'string' ? n : n.op == 'NOT' ? 'NOT ' + str(n.a) : top ? str(n.a) + ' ' + n.op + ' ' + str(n.b) : '(' + str(n, 1) + ')';
+  const env = m => ({ A: !!(m & 4), B: !!(m & 2), C: !!(m & 1) });
+  const key = n => { let s = ''; for (let m = 0; m < 8; m++) s += +ev(n, env(m)); return s; };
+  const dep = n => V.filter(v => { for (let m = 0; m < 8; m++) { const e = env(m); if (ev(n, e) !== ev(n, { ...e, [v]: !e[v] })) return 1; } return 0; }).length;
+  const vars = n => { const s = new Set; (function w(x) { if (typeof x == 'string') s.add(x); else { w(x.a); x.b && w(x.b); } })(n); return V.filter(v => s.has(v)); };
+
+  // semua pohon rangkaian dengan tepat g gerbang (NOT hanya di input)
+  const T = [V.slice()];
+  for (let g = 1; g <= 3; g++) {
+    const r = [];
+    if (g == 1) V.forEach(v => r.push({ op: 'NOT', a: v }));
+    for (let i = 0; i < g; i++) for (const a of T[i]) for (const b of T[g - 1 - i]) for (const op of OPS) r.push({ op, a, b });
+    T.push(r);
+  }
+  const seen = new Set(), all = [];
+  T[0].concat(T[1]).forEach(t => seen.add(key(t)));
+  T.forEach((r, g) => { if (g < 2) return; r.forEach(t => {
+    const vs = vars(t); if (vs.length < 2 || dep(t) != vs.length) return;
+    const k = key(t); if (seen.has(k)) return; seen.add(k);
+    all.push({ tree: t, g, vars: vs, text: str(t, 1) });
+  }); });
+  const lo = all.filter(p => p.g == 2), hi = all.filter(p => p.g == 3), need = 120 - lo.length;
+  const P = lo.concat(Array.from({ length: need }, (_, k) => hi[Math.floor(k * hi.length / need)])).slice(0, 120);
+  P.forEach((p, i) => p.id = i);
+
+  function steps(n, out = [], seen = new Set()) {
+    if (typeof n == 'string') return out;
+    steps(n.a, out, seen); n.b && steps(n.b, out, seen);
+    const t = str(n, 1); if (!seen.has(t)) { seen.add(t); out.push({ n, t }); }
+    return out;
+  }
+  function table(p) {
+    const vs = p.vars, st = steps(p.tree), rows = [];
+    for (let m = 0; m < 1 << vs.length; m++) { const e = {}; vs.forEach((v, i) => e[v] = !!((m >> (vs.length - 1 - i)) & 1)); rows.push([...vs.map(v => +e[v]), ...st.map(x => +ev(x.n, e))]); }
+    return { vars: vs, cols: st.map((x, j) => j == st.length - 1 ? 'Q' : x.t), rows };
+  }
+
+  const S = 'fill="#fff" stroke="#1d3557" stroke-width="2.5"';
+  const gate = (op, x, y) => {
+    const t = (dx) => `<text x="${x + dx}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="#1d3557" stroke="none">${op}</text>`;
+    if (op == 'NOT') return `<path d="M${x - 20} ${y - 14}L${x + 8} ${y}L${x - 20} ${y + 14}Z" ${S}/><circle cx="${x + 12}" cy="${y}" r="4" ${S}/>${t(-6)}`;
+    if (op == 'AND') return `<path d="M${x - 25} ${y - 20}H${x}A20 20 0 0 1 ${x} ${y + 20}H${x - 25}Z" ${S}/>${t(-8)}`;
+    return `<path d="M${x - 25} ${y - 20}C${x - 5} ${y - 20} ${x + 15} ${y - 12} ${x + 25} ${y}C${x + 15} ${y + 12} ${x - 5} ${y + 20} ${x - 25} ${y + 20}C${x - 15} ${y + 8} ${x - 15} ${y - 8} ${x - 25} ${y - 20}Z" ${S}/>`
+      + (op == 'XOR' ? `<path d="M${x - 32} ${y - 20}C${x - 22} ${y - 8} ${x - 22} ${y + 8} ${x - 32} ${y + 20}" fill="none"/>` : '') + t(0);
+  };
+
+  function svg(p) {
     let w = '', sh = '';
 
-    // 1. Koordinat Y Tetap untuk Baris Utama A, B, C
+    // 1. Koordinat dasar untuk variabel A, B, C
     const yMap = { A: 35, B: 85, C: 135 };
     const xLabel = 20;
-    const busX = { A: 50, B: 65, C: 80 }; // Bus vertikal terpisah untuk A, B, C
+    const busX = { A: 48, B: 62, C: 76 };
 
-    // Render Teks Label A, B, C & Jalur Masuk Bus
+    // Gambar label input A, B, C beserta jalur awalnya
     p.vars.forEach(v => {
       w += `<path d="M${xLabel} ${yMap[v]} H${busX[v]}"/>`;
       sh += `<text x="${xLabel - 8}" y="${yMap[v] + 5}" text-anchor="middle" font-size="15" font-weight="700" fill="#1d3557" stroke="none">${v}</text>`;
     });
 
-    // 2. Traversal Pohon Rekursif untuk Menghitung Posisi & Menghubungkan Kawat
+    // 2. Fungsi Rekursif untuk menggambar skema logika
     const walk = (node) => {
-      // Jika Node adalah Variabel (A, B, C)
       if (typeof node === 'string') {
         return { x: busX[node], y: yMap[node], isVar: true, v: node, level: 0 };
       }
 
-      // Jika Node adalah Gerbang Logika (NOT, AND, OR, XOR)
       const isUnary = node.op === 'NOT';
       const left = walk(node.a);
       const right = isUnary ? null : walk(node.b);
 
-      const level = 1 + Math.max(left.level, right ? right.level : 0);
-      
-      // Menentukan Posisi X berdasarkan Level Rangkaian
+      const leftL = left ? left.level : 0;
+      const rightL = right ? right.level : 0;
+      const level = 1 + Math.max(leftL, rightL);
+
+      // Posisi X gerbang berdasarkan levelnya
       const gateX = 120 + level * 95;
 
-      // Menentukan Posisi Y
+      // Posisi Y gerbang
       let gateY = left.y;
       if (!isUnary && right) {
         gateY = (left.y + right.y) / 2;
       }
 
-      // Lebar Simbol Gerbang untuk Menghitung Kawat Masuk & Keluar
       const inX = gateX - (node.op === 'NOT' ? 20 : node.op === 'XOR' ? 30 : 25);
       const outX = gateX + (node.op === 'NOT' ? 12 : 25);
 
-      // --- PERBAIKAN ROUTING KAWAT INPUT ---
       const children = isUnary ? [left] : [left, right];
       children.forEach((child, idx) => {
-        // Offset Y agar kawat masuk tepat di pin Atas (-9) / Bawah (+9) gerbang
+        if (!child) return;
         const pinY = isUnary ? gateY : (idx === 0 ? gateY - 9 : gateY + 9);
 
         if (child.isVar) {
-          // Kawat langsung dari Bus Vertikal A, B, C
           const bx = busX[child.v];
           w += `<path d="M${bx} ${yMap[child.v]} V${pinY} H${inX}"/>`;
           w += `<circle cx="${bx}" cy="${yMap[child.v]}" r="3" fill="#1d3557"/>`;
         } else {
-          // Kawat antar Gerbang (Belokan Orthogonal Siku-90 yang Bersih)
+          // Garis antar-gerbang dibuat lurus siku (orthogonal)
           const midX = child.x + Math.max(12, (inX - child.x) / 2);
           w += `<path d="M${child.x} ${child.y} H${midX} V${pinY} H${inX}"/>`;
         }
       });
 
-      // Render Simbol Gerbang Logika
       sh += gate(node.op, gateX, gateY);
 
       return { x: outX, y: gateY, isVar: false, level };
     };
 
-    // 3. Jalankan Render Pohon Rangkaian Utama
+    // 3. Render dari root
     const rootOut = walk(p.tree);
 
-    // 4. Render Garis dan Teks Output Akhir Q
+    // 4. Output Q
     w += `<path d="M${rootOut.x} ${rootOut.y} H${rootOut.x + 30}"/>`;
     sh += `<text x="${rootOut.x + 45}" y="${rootOut.y + 5}" text-anchor="middle" font-size="16" font-weight="700" fill="#e63946" stroke="none">Q</text>`;
 
-    // Dimensi SVG Sesuai Luas Konten
     const W = rootOut.x + 65;
     const H = 170;
 
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W * 1.15}px; display:block; margin:auto;" font-family="system-ui,sans-serif"><g stroke="#1d3557" stroke-width="2.2" fill="none" stroke-linejoin="round" stroke-linecap="round">${w}${sh}</g></svg>`;
   }
+
+  root.LOGIC = { PUZZLES: P, svg, table };
+  if (typeof module != 'undefined') module.exports = root.LOGIC;
+})(typeof window != 'undefined' ? window : globalThis);
