@@ -1,4 +1,4 @@
-const { r, B } = require('../lib/db');
+const { r, B, norm } = require('../lib/db');
 
 module.exports = async (req, res) => {
   if (!process.env.ADMIN_KEY || req.headers['x-admin-key'] !== process.env.ADMIN_KEY)
@@ -11,7 +11,20 @@ module.exports = async (req, res) => {
       res.setHeader('Content-Type', f.headers.get('content-type') || 'image/jpeg');
       return res.send(Buffer.from(await f.arrayBuffer()));
     }
-    if (req.method === 'POST') { // hapus siswa: data, foto, dan kembalikan soalnya ke daftar
+    if (req.method === 'POST') {
+      const b = req.body || {};
+      if (b.action === 'roster') { // simpan daftar siswa: Nama, Kelas, PIN
+        const seen = new Set(), list = [];
+        for (const line of String(b.text || '').split('\n')) {
+          const [name, kelas = '', pin = ''] = line.split(/\t|;|\||,/).map(x => x.trim());
+          if (!name) continue;
+          const id = norm(kelas ? `${name} ${kelas}` : name);
+          if (!seen.has(id)) { seen.add(id); list.push({ id, name: name.slice(0, 60), kelas: kelas.slice(0, 12), pin: pin.slice(0, 12) }); }
+        }
+        await r.set(`${B}:roster`, list);
+        return res.json({ saved: list.length });
+      }
+      // hapus siswa: data, foto, dan kembalikan soalnya ke daftar
       const { del } = await import('@vercel/blob');
       let n = 0;
       for (const id of [].concat((req.body || {}).ids || []).slice(0, 200)) {
@@ -25,6 +38,6 @@ module.exports = async (req, res) => {
     }
     const ids = await r.smembers(`${B}:names`);
     const rows = ids.length ? await r.mget(...ids.map(i => `${B}:s:${i}`)) : [];
-    res.json({ left: await r.scard(`${B}:pool`), rows: rows.map((x, i) => x && { ...x, id: ids[i] }).filter(Boolean) });
+    res.json({ left: await r.scard(`${B}:pool`), roster: (await r.get(`${B}:roster`)) || [], rows: rows.map((x, i) => x && { ...x, id: ids[i] }).filter(Boolean) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };

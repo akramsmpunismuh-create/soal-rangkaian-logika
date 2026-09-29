@@ -1,10 +1,14 @@
-const { r, B, TOTAL, norm } = require('../lib/db');
+const { r, B, TOTAL } = require('../lib/db');
 
 module.exports = async (req, res) => {
   try {
+    const roster = (await r.get(`${B}:roster`)) || [];
+    if (req.method === 'GET') return res.json(roster.map(({ id, name, kelas, pin }) => ({ id, name, kelas, pin: !!pin })));
     if (req.method !== 'POST') return res.status(405).end();
-    const { action, name, app, ans } = req.body || {}, id = norm(name);
-    if (id.length < 3) return res.status(400).json({ error: 'Tulis nama lengkap (minimal 3 huruf).' });
+    const { action, id, pin, app, ans } = req.body || {};
+    const e = roster.find(x => x.id === id);
+    if (!e) return res.status(404).json({ error: 'Nama tidak ada di daftar. Hubungi guru.' });
+    if (e.pin && String(pin || '').trim() !== e.pin) return res.status(403).json({ error: 'PIN salah.' });
     const key = `${B}:s:${id}`;
     let s = await r.get(key);
 
@@ -12,11 +16,11 @@ module.exports = async (req, res) => {
       if (await r.setnx(`${B}:init`, 1)) await r.sadd(`${B}:pool`, ...Array.from({ length: TOTAL }, (_, i) => i));
       const idx = await r.spop(`${B}:pool`); // ambil acak & atomik: tidak mungkin kembar
       if (idx == null) return res.status(409).json({ error: 'Semua soal sudah terpakai. Hubungi guru.' });
-      s = { name: String(name).trim().slice(0, 60), idx: Number(idx), at: Date.now() };
+      s = { name: e.name, kelas: e.kelas, idx: Number(idx), at: Date.now() };
       if (await r.set(key, s, { nx: true })) await r.sadd(`${B}:names`, id);
       else { await r.sadd(`${B}:pool`, s.idx); s = await r.get(key); } // klik ganda: kembalikan soal
     }
-    if (!s) return res.status(404).json({ error: 'Nama belum terdaftar.' });
+    if (!s) return res.status(404).json({ error: 'Belum mengambil soal.' });
 
     if (action === 'help' && !s.helped) { s.helped = Date.now(); await r.set(key, s); }
 
