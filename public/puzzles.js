@@ -1,7 +1,8 @@
-// Membuat 120 soal unik (maks 3 input A,B,C & 3 gerbang) + gambar SVG-nya. Dipakai siswa & admin.
+// Membuat 120 soal unik & RINGAN (maks 3 input A,B,C & 3 gerbang; AND OR NAND NOR XOR XNOR NOT) + gambar SVG-nya. Dipakai siswa & admin.
 (function (root) {
-  const V = ['A', 'B', 'C'], OPS = ['AND', 'OR', 'XOR'];
-  const ev = (n, e) => { if (typeof n == 'string') return e[n]; const a = ev(n.a, e); if (n.op == 'NOT') return !a; const b = ev(n.b, e); return n.op == 'AND' ? a && b : n.op == 'OR' ? a || b : a !== b; };
+  const V = ['A', 'B', 'C'], OPS = ['AND', 'OR', 'XOR', 'NAND', 'NOR', 'XNOR'];
+  const ev = (n, e) => { if (typeof n == 'string') return e[n]; const a = ev(n.a, e); if (n.op == 'NOT') return !a; const b = ev(n.b, e);
+    switch (n.op) { case 'AND': return a && b; case 'OR': return a || b; case 'XOR': return a !== b; case 'NAND': return !(a && b); case 'NOR': return !(a || b); default: return a === b; } };
   const str = (n, top) => typeof n == 'string' ? n : n.op == 'NOT' ? 'NOT ' + str(n.a) : top ? str(n.a) + ' ' + n.op + ' ' + str(n.b) : '(' + str(n, 1) + ')';
   const env = m => ({ A: !!(m & 4), B: !!(m & 2), C: !!(m & 1) });
   const key = n => { let s = ''; for (let m = 0; m < 8; m++) s += +ev(n, env(m)); return s; };
@@ -15,15 +16,28 @@
     for (let i = 0; i < g; i++) for (const a of T[i]) for (const b of T[g - 1 - i]) for (const op of OPS) r.push({ op, a, b });
     T.push(r);
   }
-  const seen = new Set(), all = [];
+  // Skor kesulitan: NOT = 1, AND/OR/NAND/NOR = 2, XOR/XNOR = 3 (paling sulit dibaca), dijumlah di seluruh pohon.
+  const cost = n => typeof n == 'string' ? 0 : (n.op == 'NOT' ? 1 : /^X/.test(n.op) ? 3 : 2) + cost(n.a) + (n.b ? cost(n.b) : 0);
+
+  // Kumpulkan semua fungsi unik; untuk tiap fungsi simpan rangkaian TERMUDAH.
+  const seen = new Set(), best = new Map(), all = [];
   T[0].concat(T[1]).forEach(t => seen.add(key(t)));
   T.forEach((r, g) => { if (g < 2) return; r.forEach(t => {
     const vs = vars(t); if (vs.length < 2 || dep(t) != vs.length) return;
-    const k = key(t); if (seen.has(k)) return; seen.add(k);
-    all.push({ tree: t, g, vars: vs, text: str(t, 1) });
+    const k = key(t); if (seen.has(k)) return;
+    const p = { tree: t, g, vars: vs, text: str(t, 1), level: cost(t) };
+    const old = best.get(k);
+    if (!old) { best.set(k, p); all.push(p); }
+    else if (p.level < old.level) { all[all.indexOf(old)] = p; best.set(k, p); }
   }); });
-  const lo = all.filter(p => p.g == 2), hi = all.filter(p => p.g == 3), need = 120 - lo.length;
-  const P = lo.concat(Array.from({ length: need }, (_, k) => hi[Math.floor(k * hi.length / need)])).slice(0, 120);
+
+  // Ambil 120 soal termudah; bila tingkat batas kelebihan, dipilih merata.
+  const N = 120, srt = all.slice().sort((x, y) => x.level - y.level);
+  const cut = srt[Math.min(N, srt.length) - 1].level;
+  const tier = all.filter(p => p.level == cut), keep = all.filter(p => p.level < cut);
+  const take = Math.min(N - keep.length, tier.length);
+  const chosen = new Set(keep.concat(Array.from({ length: take }, (_, k) => tier[Math.floor(k * tier.length / take)])));
+  const P = all.filter(p => chosen.has(p));
   P.forEach((p, i) => p.id = i);
 
   function steps(n, out = [], seen = new Set()) {
@@ -39,12 +53,15 @@
   }
 
   const S = 'fill="#fff" stroke="#1d3557" stroke-width="2.5"';
+  const CORE = { NAND: 'AND', NOR: 'OR', XNOR: 'XOR' };
   const gate = (op, x, y) => {
-    const t = (dx) => `<text x="${x + dx}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="#1d3557" stroke="none">${op}</text>`;
-    if (op == 'NOT') return `<path d="M${x - 20} ${y - 14}L${x + 8} ${y}L${x - 20} ${y + 14}Z" ${S}/><circle cx="${x + 12}" cy="${y}" r="4" ${S}/>${t(-6)}`;
-    if (op == 'AND') return `<path d="M${x - 25} ${y - 20}H${x}A20 20 0 0 1 ${x} ${y + 20}H${x - 25}Z" ${S}/>${t(-8)}`;
+    const t = (dx) => `<text x="${x + dx}" y="${y + 4}" text-anchor="middle" font-size="${op.length > 3 ? 7.5 : op == 'NOT' ? 8 : 9}" font-weight="700" fill="#1d3557" stroke="none">${op}</text>`;
+    if (op == 'NOT') return `<path d="M${x - 20} ${y - 14}L${x + 8} ${y}L${x - 20} ${y + 14}Z" ${S}/><circle cx="${x + 12}" cy="${y}" r="4" ${S}/>${t(-9)}`;
+    const core = CORE[op] || op, inv = core != op;
+    const bub = inv ? `<circle cx="${x + (core == 'AND' ? 24 : 29)}" cy="${y}" r="4" ${S}/>` : '';
+    if (core == 'AND') return `<path d="M${x - 25} ${y - 20}H${x}A20 20 0 0 1 ${x} ${y + 20}H${x - 25}Z" ${S}/>${bub}${t(-12)}`;
     return `<path d="M${x - 25} ${y - 20}C${x - 5} ${y - 20} ${x + 15} ${y - 12} ${x + 25} ${y}C${x + 15} ${y + 12} ${x - 5} ${y + 20} ${x - 25} ${y + 20}C${x - 15} ${y + 8} ${x - 15} ${y - 8} ${x - 25} ${y - 20}Z" ${S}/>`
-      + (op == 'XOR' ? `<path d="M${x - 32} ${y - 20}C${x - 22} ${y - 8} ${x - 22} ${y + 8} ${x - 32} ${y + 20}" fill="none"/>` : '') + t(0);
+      + (core == 'XOR' ? `<path d="M${x - 32} ${y - 20}C${x - 22} ${y - 8} ${x - 22} ${y + 8} ${x - 32} ${y + 20}" fill="none"/>` : '') + bub + t(0);
   };
 
   // Normalisasi pohon AST agar format string ("NOT A") diubah jadi objek konsisten
@@ -103,8 +120,8 @@
       const gateY = calcY(node);
       const gateX = 60 + level * 105;
 
-      const inX = gateX - (node.op === 'NOT' ? 20 : node.op === 'XOR' ? 30 : 25);
-      const outX = gateX + (node.op === 'NOT' ? 12 : 25);
+      const inX = gateX - (node.op === 'NOT' ? 20 : /XOR$/.test(node.op) ? 30 : 25);
+      const outX = gateX + ({ NOT: 12, AND: 20, NAND: 24, OR: 25, XOR: 25, NOR: 29, XNOR: 29 })[node.op];
 
       const children = isUnary ? [left] : [left, right];
       children.forEach((child, idx) => {
