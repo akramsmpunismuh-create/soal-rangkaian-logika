@@ -21,7 +21,7 @@ button:disabled{opacity:.5}
 .up{display:block;border:2px dashed #b9d4ea;border-radius:10px;padding:10px;margin:0 0 10px;font-weight:600}
 .up input{display:block;margin-top:6px;max-width:100%}.up img{display:block;max-width:100%;max-height:180px;margin-top:8px;border-radius:8px}
 #sub{background:#3daf6a}
-.tt{border-collapse:collapse;margin:8px auto 14px}.tt td,.tt th{border:1px solid #b9d4ea;padding:6px 16px;text-align:center;font-size:18px}.tt th{background:#eef6fd}
+#tt{overflow-x:auto}.tt{border-collapse:collapse;margin:8px auto 14px}.tt td,.tt th{border:1px solid #b9d4ea;padding:6px 8px;text-align:center;font-size:17px}.tt th{background:#eef6fd;font-size:13px}
 .q{display:inline-block;width:48px;padding:6px 0;background:#e8f1f9;color:#1d3b5a;font-size:18px}
 .done{background:#fff3cd;border:2px solid #f5b301;border-radius:12px;padding:14px;font-size:18px;margin:0 0 14px}
 #err,#msg{margin:8px 0 0;font-weight:600}#err{color:#c62828}
@@ -45,7 +45,7 @@ button:disabled{opacity:.5}
     <div>Selesaikan rangkaian logika:</div>
     <div class="ex" id="ex"></div>
     <div id="inp"></div>
-    <p>Simulasikan di aplikasi, lalu buat tabel kebenaran di kertas.</p>
+    <p>Simulasikan di aplikasi dan screenshot hasilnya, lalu isi tabel kebenaran langkah demi langkah di bawah.</p>
     <div class="apps">
       <a class="app" target="_blank" rel="noopener" href="https://play.google.com/store/search?q=Logic%20Circuit%20Simulator%20Pro&c=apps">Logic Circuit Simulator Pro</a>
       <a class="app" target="_blank" rel="noopener" href="https://play.google.com/store/search?q=Smart%20Logic%20Simulator&c=apps">Smart Logic Simulator</a>
@@ -58,10 +58,9 @@ button:disabled{opacity:.5}
   </div>
   <div class="card">
     <h3>Jawaban</h3>
-    <p>Isi tabel kebenaran di bawah (ketuk tanda ? di kolom Q untuk mengganti 0 atau 1), <b>atau</b> upload foto tabel dari kertas. Boleh keduanya.</p>
+    <p>Isi tabel kebenaran <b>langkah demi langkah</b>. Kolom input sudah terisi. Isi hasil tiap gerbang satu per satu dari kiri ke kanan, sampai kolom Q. Ketuk tanda ? untuk memilih 0 atau 1.</p>
     <div id="tt"></div>
-    <label class="up">Screenshot aplikasi (opsional)<input type="file" id="f1" accept="image/*"><img id="p1" alt=""></label>
-    <label class="up">Foto tabel kebenaran di kertas (opsional jika tabel di atas sudah diisi)<input type="file" id="f2" accept="image/*"><img id="p2" alt=""></label>
+    <label class="up">Screenshot aplikasi simulator (wajib)<input type="file" id="f1" accept="image/*"><img id="p1" alt=""></label>
     <button id="sub">Kirim tugas</button><p id="msg" role="status"></p>
   </div>
 </section>
@@ -86,15 +85,14 @@ function show(d) {
   if (d.helped) fig();
   initTable();
   if (d.app) $('p1').src = d.app;
-  if (d.table) $('p2').src = d.table;
   done();
 }
 function initTable() {
-  const t = LOGIC.table(P()), n = t.rows.length;
+  const t = LOGIC.table(P()), ns = t.cols.length, k = t.vars.length, n = t.rows.length * ns;
   let sv = {}; try { sv = JSON.parse(localStorage.A || '{}'); } catch {}
-  A = me.ans ? [...me.ans].map(Number) : sv.n === name && sv.a && sv.a.length === n ? sv.a : Array(n).fill(null);
-  $('tt').innerHTML = `<table class="tt"><tr>${t.vars.map(v => `<th>${v}</th>`).join('')}<th>Q</th></tr>` +
-    t.rows.map((r, i) => `<tr>${r.slice(0, -1).map(b => `<td>${b}</td>`).join('')}<td><button type="button" class="q" data-i="${i}">${A[i] ?? '?'}</button></td></tr>`).join('') + '</table>';
+  A = me.ans && me.ans.length === n ? [...me.ans].map(Number) : sv.n === name && sv.a && sv.a.length === n ? sv.a : Array(n).fill(null);
+  $('tt').innerHTML = `<table class="tt"><tr>${t.vars.map(v => `<th>${v}</th>`).join('')}${t.cols.map(c => `<th>${c}</th>`).join('')}</tr>` +
+    t.rows.map((r, ri) => `<tr>${r.slice(0, k).map(b => `<td>${b}</td>`).join('')}${t.cols.map((_, j) => `<td><button type="button" class="q" data-i="${ri * ns + j}">${A[ri * ns + j] ?? '?'}</button></td>`).join('')}</tr>`).join('') + '</table>';
   $('tt').onclick = e => {
     const b = e.target.closest('.q'); if (!b) return;
     const i = +b.dataset.i; A[i] = A[i] === 1 ? 0 : 1; b.textContent = A[i];
@@ -126,17 +124,17 @@ const shrink = f => new Promise((ok, no) => {
     c.width = i.width * s; c.height = i.height * s; c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', .8)); };
   i.onerror = () => no(new Error('File itu bukan gambar.')); i.src = URL.createObjectURL(f);
 });
-['f1', 'f2'].forEach(k => $(k).onchange = async e => {
+['f1'].forEach(k => $(k).onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   try { imgs[k] = await shrink(f); $('p' + k[1]).src = imgs[k]; dirty = true; } catch (x) { $('msg').textContent = x.message; }
 });
 $('sub').onclick = async () => {
   const full = A.length && A.every(v => v === 0 || v === 1);
-  if (A.some(v => v !== null) && !full) return $('msg').textContent = 'Tabel kebenaran belum terisi semua baris.';
-  if (!full && !imgs.f2 && !me.table && !me.ans) return $('msg').textContent = 'Isi tabel kebenaran di atas atau upload foto tabelnya.';
+  if (!full) return $('msg').textContent = 'Isi semua kotak tabel kebenaran dulu (langkah demi langkah sampai kolom Q).';
+  if (!imgs.f1 && !me.app) return $('msg').textContent = 'Upload screenshot aplikasi dulu.';
   $('sub').disabled = true; $('msg').textContent = 'Mengirim...';
   try {
-    me = await api({ action: 'submit', app: imgs.f1, table: imgs.f2, ans: full ? A.join('') : undefined });
+    me = await api({ action: 'submit', app: imgs.f1, ans: A.join('') });
     dirty = false; imgs = {}; done(); $('done').scrollIntoView({ behavior: 'smooth' });
   } catch (e) { $('msg').textContent = e.message; }
   $('sub').disabled = false;

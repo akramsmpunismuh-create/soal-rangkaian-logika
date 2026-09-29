@@ -27,10 +27,16 @@
   const P = lo.concat(Array.from({ length: need }, (_, k) => hi[Math.floor(k * hi.length / need)])).slice(0, 120);
   P.forEach((p, i) => p.id = i);
 
-  function table(p) {
-    const vs = p.vars, rows = [];
-    for (let m = 0; m < 1 << vs.length; m++) { const e = {}; vs.forEach((v, i) => e[v] = !!((m >> (vs.length - 1 - i)) & 1)); rows.push([...vs.map(v => +e[v]), +ev(p.tree, e)]); }
-    return { vars: vs, rows };
+  function steps(n, out = [], seen = new Set()) { // hasil tiap gerbang, urut dari input ke Q
+    if (typeof n == 'string') return out;
+    steps(n.a, out, seen); n.b && steps(n.b, out, seen);
+    const t = str(n, 1); if (!seen.has(t)) { seen.add(t); out.push({ n, t }); }
+    return out;
+  }
+  function table(p) { // baris = [input..., langkah..., Q]
+    const vs = p.vars, st = steps(p.tree), rows = [];
+    for (let m = 0; m < 1 << vs.length; m++) { const e = {}; vs.forEach((v, i) => e[v] = !!((m >> (vs.length - 1 - i)) & 1)); rows.push([...vs.map(v => +e[v]), ...st.map(x => +ev(x.n, e))]); }
+    return { vars: vs, cols: st.map((x, j) => j == st.length - 1 ? 'Q' : x.t), rows };
   }
 
   const S = 'fill="#fff" stroke="#1d3557" stroke-width="2.5"';
