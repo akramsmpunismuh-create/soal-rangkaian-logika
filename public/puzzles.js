@@ -47,7 +47,7 @@
     p.vars.forEach((v, i) => { ys[v] = 50 + i * 70; bus[v] = 62 + i * 14; });
     const walk = n => {
       if (typeof n == 'string') return { L: 0, y: ys[n], v: n };
-      const kids = [n.a, n.b].filter(Boolean).map(walk), L = 1 + Math.max(...kids.map(k => k.L));
+      const kids = [n.a, n.b].filter(Boolean).map(walk).sort((p, q) => p.y - q.y), L = 1 + Math.max(...kids.map(k => k.L));
       let y = kids.reduce((s, k) => s + k.y, 0) / kids.length;
       const u = col[L] = col[L] || []; while (u.some(q => Math.abs(q - y) < 60)) y += 60; u.push(y);
       const x = 170 + (L - 1) * 130, tx = x - (n.op == 'NOT' ? 20 : 28); maxY = Math.max(maxY, y);
