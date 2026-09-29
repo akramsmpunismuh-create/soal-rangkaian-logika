@@ -1,133 +1,439 @@
-// Membuat 120 soal unik (maks 3 input A,B,C & 3 gerbang) + gambar SVG-nya. Dipakai siswa & admin.
-(function (root) {
-  const V = ['A', 'B', 'C'], OPS = ['AND', 'OR', 'XOR'];
-  const ev = (n, e) => { if (typeof n == 'string') return e[n]; const a = ev(n.a, e); if (n.op == 'NOT') return !a; const b = ev(n.b, e); return n.op == 'AND' ? a && b : n.op == 'OR' ? a || b : a !== b; };
-  const str = (n, top) => typeof n == 'string' ? n : n.op == 'NOT' ? 'NOT ' + str(n.a) : top ? str(n.a) + ' ' + n.op + ' ' + str(n.b) : '(' + str(n, 1) + ')';
-  const env = m => ({ A: !!(m & 4), B: !!(m & 2), C: !!(m & 1) });
-  const key = n => { let s = ''; for (let m = 0; m < 8; m++) s += +ev(n, env(m)); return s; };
-  const dep = n => V.filter(v => { for (let m = 0; m < 8; m++) { const e = env(m); if (ev(n, e) !== ev(n, { ...e, [v]: !e[v] })) return 1; } return 0; }).length;
-  const vars = n => { const s = new Set; (function w(x) { if (typeof x == 'string') s.add(x); else { w(x.a); x.b && w(x.b); } })(n); return V.filter(v => s.has(v)); };
-
-  // semua pohon rangkaian dengan tepat g gerbang (NOT hanya di input)
-  const T = [V.slice()];
-  for (let g = 1; g <= 3; g++) {
-    const r = [];
-    if (g == 1) V.forEach(v => r.push({ op: 'NOT', a: v }));
-    for (let i = 0; i < g; i++) for (const a of T[i]) for (const b of T[g - 1 - i]) for (const op of OPS) r.push({ op, a, b });
-    T.push(r);
-  }
-  const seen = new Set(), all = [];
-  T[0].concat(T[1]).forEach(t => seen.add(key(t)));
-  T.forEach((r, g) => { if (g < 2) return; r.forEach(t => {
-    const vs = vars(t); if (vs.length < 2 || dep(t) != vs.length) return;
-    const k = key(t); if (seen.has(k)) return; seen.add(k);
-    all.push({ tree: t, g, vars: vs, text: str(t, 1) });
-  }); });
-  const lo = all.filter(p => p.g == 2), hi = all.filter(p => p.g == 3), need = 120 - lo.length;
-  const P = lo.concat(Array.from({ length: need }, (_, k) => hi[Math.floor(k * hi.length / need)])).slice(0, 120);
-  P.forEach((p, i) => p.id = i);
-
-  function steps(n, out = [], seen = new Set()) {
-    if (typeof n == 'string') return out;
-    steps(n.a, out, seen); n.b && steps(n.b, out, seen);
-    const t = str(n, 1); if (!seen.has(t)) { seen.add(t); out.push({ n, t }); }
-    return out;
-  }
-  function table(p) {
-    const vs = p.vars, st = steps(p.tree), rows = [];
-    for (let m = 0; m < 1 << vs.length; m++) { const e = {}; vs.forEach((v, i) => e[v] = !!((m >> (vs.length - 1 - i)) & 1)); rows.push([...vs.map(v => +e[v]), ...st.map(x => +ev(x.n, e))]); }
-    return { vars: vs, cols: st.map((x, j) => j == st.length - 1 ? 'Q' : x.t), rows };
-  }
-
-  const S = 'fill="#fff" stroke="#1d3557" stroke-width="2.5"';
-  const gate = (op, x, y) => {
-    const t = (dx) => `<text x="${x + dx}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="#1d3557" stroke="none">${op}</text>`;
-    if (op == 'NOT') return `<path d="M${x - 20} ${y - 14}L${x + 8} ${y}L${x - 20} ${y + 14}Z" ${S}/><circle cx="${x + 12}" cy="${y}" r="4" ${S}/>${t(-6)}`;
-    if (op == 'AND') return `<path d="M${x - 25} ${y - 20}H${x}A20 20 0 0 1 ${x} ${y + 20}H${x - 25}Z" ${S}/>${t(-8)}`;
-    return `<path d="M${x - 25} ${y - 20}C${x - 5} ${y - 20} ${x + 15} ${y - 12} ${x + 25} ${y}C${x + 15} ${y + 12} ${x - 5} ${y + 20} ${x - 25} ${y + 20}C${x - 15} ${y + 8} ${x - 15} ${y - 8} ${x - 25} ${y - 20}Z" ${S}/>`
-      + (op == 'XOR' ? `<path d="M${x - 32} ${y - 20}C${x - 22} ${y - 8} ${x - 22} ${y + 8} ${x - 32} ${y + 20}" fill="none"/>` : '') + t(0);
+function svg(p) {
+  const yMap = {
+    A: 35,
+    B: 85,
+    C: 135
   };
 
-  function svg(p) {
-    let w = '', sh = '';
+  // Input tidak lagi terlalu berdekatan secara horizontal.
+  const xLabel = 20;
+  const busX = {
+    A: 50,
+    B: 75,
+    C: 100
+  };
 
-    // 1. Grid Y untuk input A, B, C
-    const yMap = { A: 35, B: 85, C: 135 };
-    const xLabel = 20;
-    const busX = { A: 48, B: 62, C: 76 };
+  let wires = [];
+  let shapes = [];
+
+  /*
+   * Menambahkan kabel input.
+   * Kabel A/B/C berhenti di busX masing-masing.
+   */
+  p.vars.forEach(v => {
+    if (yMap[v] === undefined) return;
+
+    wires.push({
+      type: 'input',
+      fromX: xLabel,
+      fromY: yMap[v],
+      toX: busX[v],
+      toY: yMap[v],
+      variable: v
+    });
+
+    shapes.push(
+      `<text x="${xLabel - 8}" y="${yMap[v] + 5}"
+        text-anchor="middle"
+        font-size="15"
+        font-weight="700"
+        fill="#1d3557"
+        stroke="none">${v}</text>`
+    );
+  });
+
+  /*
+   * Cari apakah sebuah kabel vertikal akan melewati
+   * jalur input A/B/C.
+   */
+  function crossingsForVertical(x, y1, y2) {
+    const result = [];
+
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
 
     p.vars.forEach(v => {
-      if (yMap[v] !== undefined) {
-        w += `<path d="M${xLabel} ${yMap[v]} H${busX[v]}"/>`;
-        sh += `<text x="${xLabel - 8}" y="${yMap[v] + 5}" text-anchor="middle" font-size="15" font-weight="700" fill="#1d3557" stroke="none">${v}</text>`;
+      const y = yMap[v];
+      if (y === undefined) return;
+
+      // Jangan bridge pada titik asal kabel itu sendiri.
+      if (y === y1) return;
+
+      // Input line hanya sampai busX[v].
+      if (x > busX[v]) return;
+
+      if (y > minY + 1 && y < maxY - 1) {
+        result.push(y);
       }
     });
 
-    // 2. Traversal Rekursif dengan Normalisasi Node (Mengatasi string "NOT A")
-    const walk = (rawNode) => {
-      let node = rawNode;
-      // PERBAIKAN UTAMA: Normalisasi jika string diawali 'NOT '
-      if (typeof node === 'string' && node.startsWith('NOT ')) {
-        node = { op: 'NOT', a: node.replace('NOT ', '') };
-      }
-
-      // Jika murni variabel 'A', 'B', atau 'C'
-      if (typeof node === 'string') {
-        const varY = yMap[node] !== undefined ? yMap[node] : 85;
-        const varX = busX[node] !== undefined ? busX[node] : 48;
-        return { x: varX, y: varY, isVar: true, v: node, level: 0 };
-      }
-
-      const isUnary = node.op === 'NOT';
-      const left = walk(node.a);
-      const right = isUnary ? null : walk(node.b);
-
-      const leftL = left ? left.level : 0;
-      const rightL = right ? right.level : 0;
-      const level = 1 + Math.max(leftL, rightL);
-
-      const gateX = 120 + level * 95;
-
-      let gateY = left ? left.y : 85;
-      if (!isUnary && right && left) {
-        gateY = (left.y + right.y) / 2;
-      }
-
-      const inX = gateX - (node.op === 'NOT' ? 20 : node.op === 'XOR' ? 30 : 25);
-      const outX = gateX + (node.op === 'NOT' ? 12 : 25);
-
-      const children = isUnary ? [left] : [left, right];
-      children.forEach((child, idx) => {
-        if (!child) return;
-        const pinY = isUnary ? gateY : (idx === 0 ? gateY - 9 : gateY + 9);
-
-        if (child.isVar) {
-          const varY = yMap[child.v] !== undefined ? yMap[child.v] : 85;
-          const bx = busX[child.v] !== undefined ? busX[child.v] : 48;
-          w += `<path d="M${bx} ${varY} V${pinY} H${inX}"/>`;
-          w += `<circle cx="${bx}" cy="${varY}" r="3" fill="#1d3557"/>`;
-        } else {
-          const midX = child.x + Math.max(12, (inX - child.x) / 2);
-          w += `<path d="M${child.x} ${child.y} H${midX} V${pinY} H${inX}"/>`;
-        }
-      });
-
-      sh += gate(node.op, gateX, gateY);
-
-      return { x: outX, y: gateY, isVar: false, level };
-    };
-
-    const rootOut = walk(p.tree);
-
-    w += `<path d="M${rootOut.x} ${rootOut.y} H${rootOut.x + 30}"/>`;
-    sh += `<text x="${rootOut.x + 45}" y="${rootOut.y + 5}" text-anchor="middle" font-size="16" font-weight="700" fill="#e63946" stroke="none">Q</text>`;
-
-    const W = rootOut.x + 65;
-    const H = 170;
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W * 1.15}px; display:block; margin:auto;" font-family="system-ui,sans-serif"><g stroke="#1d3557" stroke-width="2.2" fill="none" stroke-linejoin="round" stroke-linecap="round">${w}${sh}</g></svg>`;
+    return result.sort((a, b) => a - b);
   }
 
-  root.LOGIC = { PUZZLES: P, svg, table };
-  if (typeof module != 'undefined') module.exports = root.LOGIC;
-})(typeof window != 'undefined' ? window : globalThis);
+  /*
+   * Membuat kabel vertikal dengan "bridge" ketika
+   * melewati kabel input lain.
+   *
+   * Contoh:
+   *
+   *       |
+   *       )
+   * -------  -------
+   *       )
+   *       |
+   *
+   * Jadi tidak terlihat sebagai junction.
+   */
+  function verticalBridge(x, y1, y2) {
+    const crossings = crossingsForVertical(x, y1, y2);
+
+    if (!crossings.length) {
+      return `M${x} ${y1} V${y2}`;
+    }
+
+    const dir = y2 > y1 ? 1 : -1;
+    let d = `M${x} ${y1}`;
+    let current = y1;
+
+    crossings.forEach(y => {
+      const before = y - dir * 6;
+      const after = y + dir * 6;
+
+      d += ` V${before}`;
+
+      // Bridge kecil ke kanan.
+      d += ` Q${x + 8} ${y - dir * 6} ${x + 8} ${y}`;
+
+      d += ` Q${x + 8} ${y + dir * 6} ${x} ${after}`;
+
+      current = after;
+    });
+
+    d += ` V${y2}`;
+
+    return d;
+  }
+
+  /*
+   * Routing sebuah kabel dari input menuju pin gate.
+   */
+  function routeInput(child, pinY, inX) {
+    const v = child.v;
+    const startX = busX[v];
+    const startY = yMap[v];
+
+    /*
+     * Kalau tujuan masih berada di sebelah kanan
+     * bus input, gunakan:
+     *
+     * input ────┐
+     *            │
+     *            └──── gate
+     */
+    if (Math.abs(startY - pinY) < 1) {
+      return `M${startX} ${startY} H${inX}`;
+    }
+
+    const dVertical = verticalBridge(startX, startY, pinY);
+
+    return `${dVertical} H${inX}`;
+  }
+
+  /*
+   * Traversal tree.
+   *
+   * Setiap node diberi posisi berdasarkan level.
+   */
+  const walk = (rawNode) => {
+    let node = rawNode;
+
+    // Kompatibilitas jika ada representasi "NOT A".
+    if (
+      typeof node === 'string' &&
+      node.startsWith('NOT ')
+    ) {
+      node = {
+        op: 'NOT',
+        a: node.slice(4)
+      };
+    }
+
+    // Variable.
+    if (typeof node === 'string') {
+      const varY =
+        yMap[node] !== undefined
+          ? yMap[node]
+          : 85;
+
+      const varX =
+        busX[node] !== undefined
+          ? busX[node]
+          : 50;
+
+      return {
+        x: varX,
+        y: varY,
+        level: 0,
+        isVar: true,
+        v: node
+      };
+    }
+
+    const isUnary = node.op === 'NOT';
+
+    const left = walk(node.a);
+    const right = isUnary
+      ? null
+      : walk(node.b);
+
+    const leftLevel = left ? left.level : 0;
+    const rightLevel = right ? right.level : 0;
+
+    const level =
+      1 + Math.max(leftLevel, rightLevel);
+
+    /*
+     * Setiap level gate punya kolom sendiri.
+     */
+    const gateX = 145 + level * 105;
+
+    /*
+     * Posisi vertikal gate.
+     */
+    let gateY;
+
+    if (isUnary) {
+      gateY = left.y;
+    } else {
+      gateY = (left.y + right.y) / 2;
+    }
+
+    /*
+     * Hindari gate tepat berada pada jalur
+     * input utama A/B/C.
+     */
+    const inputYs = p.vars
+      .map(v => yMap[v])
+      .filter(y => y !== undefined);
+
+    let safety = 0;
+
+    while (
+      inputYs.some(y => Math.abs(y - gateY) < 14) &&
+      safety < 10
+    ) {
+      gateY += 20;
+      safety++;
+    }
+
+    /*
+     * Tentukan ukuran pin.
+     */
+    const inputWidth =
+      node.op === 'NOT'
+        ? 20
+        : node.op === 'XOR'
+          ? 30
+          : 25;
+
+    const inX = gateX - inputWidth;
+    const outX =
+      gateX +
+      (node.op === 'NOT' ? 12 : 25);
+
+    /*
+     * Routing child.
+     */
+    if (isUnary) {
+      if (left.isVar) {
+        wires.push({
+          type: 'gate',
+          d: routeInput(
+            left,
+            gateY,
+            inX
+          )
+        });
+      } else {
+        const midX =
+          left.x +
+          Math.max(
+            18,
+            (inX - left.x) / 2
+          );
+
+        wires.push({
+          type: 'gate',
+          d:
+            `M${left.x} ${left.y}` +
+            ` H${midX}` +
+            ` V${gateY}` +
+            ` H${inX}`
+        });
+      }
+    } else {
+      const pin1Y = gateY - 9;
+      const pin2Y = gateY + 9;
+
+      if (left.isVar) {
+        wires.push({
+          type: 'gate',
+          d: routeInput(
+            left,
+            pin1Y,
+            inX
+          )
+        });
+      } else {
+        const midX =
+          left.x +
+          Math.max(
+            18,
+            (inX - left.x) / 2
+          );
+
+        wires.push({
+          type: 'gate',
+          d:
+            `M${left.x} ${left.y}` +
+            ` H${midX}` +
+            ` V${pin1Y}` +
+            ` H${inX}`
+        });
+      }
+
+      if (right.isVar) {
+        wires.push({
+          type: 'gate',
+          d: routeInput(
+            right,
+            pin2Y,
+            inX
+          )
+        });
+      } else {
+        const midX =
+          right.x +
+          Math.max(
+            18,
+            (inX - right.x) / 2
+          );
+
+        wires.push({
+          type: 'gate',
+          d:
+            `M${right.x} ${right.y}` +
+            ` H${midX}` +
+            ` V${pin2Y}` +
+            ` H${inX}`
+        });
+      }
+    }
+
+    /*
+     * Gate.
+     */
+    shapes.push(
+      gate(
+        node.op,
+        gateX,
+        gateY
+      )
+    );
+
+    return {
+      x: outX,
+      y: gateY,
+      level,
+      isVar: false
+    };
+  };
+
+  /*
+   * Bangun tree.
+   */
+  const rootOut = walk(p.tree);
+
+  /*
+   * Output Q.
+   */
+  wires.push({
+    type: 'output',
+    d:
+      `M${rootOut.x} ${rootOut.y}` +
+      ` H${rootOut.x + 30}`
+  });
+
+  shapes.push(
+    `<text
+      x="${rootOut.x + 45}"
+      y="${rootOut.y + 5}"
+      text-anchor="middle"
+      font-size="16"
+      font-weight="700"
+      fill="#e63946"
+      stroke="none">Q</text>`
+  );
+
+  /*
+   * Junction/input dots.
+   *
+   * Hanya tampil pada titik awal input.
+   * Tidak membuat dot pada crossing.
+   */
+  p.vars.forEach(v => {
+    if (yMap[v] === undefined) return;
+
+    shapes.push(
+      `<circle
+        cx="${busX[v]}"
+        cy="${yMap[v]}"
+        r="3"
+        fill="#1d3557"
+        stroke="none"/>`
+    );
+  });
+
+  /*
+   * Render.
+   */
+  let wireSVG = '';
+
+  wires.forEach(w => {
+    wireSVG +=
+      `<path d="${w.d || (
+        `M${w.fromX} ${w.fromY}` +
+        ` H${w.toX}`
+      )}"/>`;
+  });
+
+  const W = rootOut.x + 70;
+  const H = 170;
+
+  return `
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 ${W} ${H}"
+      width="100%"
+      style="
+        max-width:${W * 1.15}px;
+        display:block;
+        margin:auto;
+      "
+      font-family="system-ui,sans-serif">
+
+      <g
+        stroke="#1d3557"
+        stroke-width="2.2"
+        fill="none"
+        stroke-linejoin="round"
+        stroke-linecap="round">
+
+        ${wireSVG}
+
+        ${shapes.join('')}
+
+      </g>
+    </svg>
+  `;
+}
