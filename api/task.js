@@ -2,13 +2,13 @@ const { r, B, TOTAL } = require('../lib/db');
 
 module.exports = async (req, res) => {
   try {
-    const roster = (await r.get(`${B}:roster`)) || [];
+    const roster = (await r.get('roster')) || [];
     if (req.method === 'GET') return res.json(roster.map(({ id, name, kelas, pin }) => ({ id, name, kelas, pin: !!pin })));
     if (req.method !== 'POST') return res.status(405).end();
     const { action, id, pin, app, ans } = req.body || {};
     const e = roster.find(x => x.id === id);
     if (!e) return res.status(404).json({ error: 'Nama tidak ada di daftar. Hubungi guru.' });
-    if (e.pin && String(pin || '').trim() !== e.pin) return res.status(403).json({ error: 'PIN salah.' });
+    if (e.pin && String(pin || '').trim() !== e.pin) return res.status(403).json({ error: 'NIS salah. Cek lagi nomor NIS-mu.' });
     const key = `${B}:s:${id}`;
     let s = await r.get(key);
 

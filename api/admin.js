@@ -21,7 +21,7 @@ module.exports = async (req, res) => {
           const id = norm(kelas ? `${name} ${kelas}` : name);
           if (!seen.has(id)) { seen.add(id); list.push({ id, name: name.slice(0, 60), kelas: kelas.slice(0, 12), pin: pin.slice(0, 12) }); }
         }
-        await r.set(`${B}:roster`, list);
+        await r.set('roster', list);
         return res.json({ saved: list.length });
       }
       // hapus siswa: data, foto, dan kembalikan soalnya ke daftar
@@ -38,6 +38,6 @@ module.exports = async (req, res) => {
     }
     const ids = await r.smembers(`${B}:names`);
     const rows = ids.length ? await r.mget(...ids.map(i => `${B}:s:${i}`)) : [];
-    res.json({ left: await r.scard(`${B}:pool`), roster: (await r.get(`${B}:roster`)) || [], rows: rows.map((x, i) => x && { ...x, id: ids[i] }).filter(Boolean) });
+    res.json({ left: await r.scard(`${B}:pool`), roster: (await r.get('roster')) || [], rows: rows.map((x, i) => x && { ...x, id: ids[i] }).filter(Boolean) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
