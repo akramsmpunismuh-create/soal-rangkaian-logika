@@ -1,43 +1,28 @@
-// Membuat 120 soal unik & RINGAN (maks 3 input A,B,C & 3 gerbang; AND OR NAND NOR XOR XNOR NOT) + gambar SVG-nya. Dipakai siswa & admin.
+// Membuat soal berkesulitan setara (dihitung dari skor kesulitan) + gambar SVG-nya. Dipakai siswa & admin.
 (function (root) {
-  const V = ['A', 'B', 'C'], OPS = ['AND', 'OR', 'XOR', 'NAND', 'NOR', 'XNOR'];
-  const ev = (n, e) => { if (typeof n == 'string') return e[n]; const a = ev(n.a, e); if (n.op == 'NOT') return !a; const b = ev(n.b, e);
-    switch (n.op) { case 'AND': return a && b; case 'OR': return a || b; case 'XOR': return a !== b; case 'NAND': return !(a && b); case 'NOR': return !(a || b); default: return a === b; } };
+  const V = ['A', 'B', 'C'], OPS = ['AND', 'OR', 'XOR'];
+  const ev = (n, e) => { if (typeof n == 'string') return e[n]; const a = ev(n.a, e); if (n.op == 'NOT') return !a; const b = ev(n.b, e); return n.op == 'AND' ? a && b : n.op == 'OR' ? a || b : a !== b; };
   const str = (n, top) => typeof n == 'string' ? n : n.op == 'NOT' ? 'NOT ' + str(n.a) : top ? str(n.a) + ' ' + n.op + ' ' + str(n.b) : '(' + str(n, 1) + ')';
   const env = m => ({ A: !!(m & 4), B: !!(m & 2), C: !!(m & 1) });
   const key = n => { let s = ''; for (let m = 0; m < 8; m++) s += +ev(n, env(m)); return s; };
   const dep = n => V.filter(v => { for (let m = 0; m < 8; m++) { const e = env(m); if (ev(n, e) !== ev(n, { ...e, [v]: !e[v] })) return 1; } return 0; }).length;
   const vars = n => { const s = new Set; (function w(x) { if (typeof x == 'string') s.add(x); else { w(x.a); x.b && w(x.b); } })(n); return V.filter(v => s.has(v)); };
 
-  const T = [V.slice()];
-  for (let g = 1; g <= 3; g++) {
-    const r = [];
-    if (g == 1) V.forEach(v => r.push({ op: 'NOT', a: v }));
-    for (let i = 0; i < g; i++) for (const a of T[i]) for (const b of T[g - 1 - i]) for (const op of OPS) r.push({ op, a, b });
-    T.push(r);
-  }
-  // Skor kesulitan: NOT = 1, AND/OR/NAND/NOR = 2, XOR/XNOR = 3 (paling sulit dibaca), dijumlah di seluruh pohon.
-  const cost = n => typeof n == 'string' ? 0 : (n.op == 'NOT' ? 1 : /^X/.test(n.op) ? 3 : 2) + cost(n.a) + (n.b ? cost(n.b) : 0);
-
-  // Kumpulkan semua fungsi unik; untuk tiap fungsi simpan rangkaian TERMUDAH.
-  const seen = new Set(), best = new Map(), all = [];
-  T[0].concat(T[1]).forEach(t => seen.add(key(t)));
-  T.forEach((r, g) => { if (g < 2) return; r.forEach(t => {
-    const vs = vars(t); if (vs.length < 2 || dep(t) != vs.length) return;
-    const k = key(t); if (seen.has(k)) return;
-    const p = { tree: t, g, vars: vs, text: str(t, 1), level: cost(t) };
-    const old = best.get(k);
-    if (!old) { best.set(k, p); all.push(p); }
-    else if (p.level < old.level) { all[all.indexOf(old)] = p; best.set(k, p); }
-  }); });
-
-  // Ambil 120 soal termudah; bila tingkat batas kelebihan, dipilih merata.
-  const N = 120, srt = all.slice().sort((x, y) => x.level - y.level);
-  const cut = srt[Math.min(N, srt.length) - 1].level;
-  const tier = all.filter(p => p.level == cut), keep = all.filter(p => p.level < cut);
-  const take = Math.min(N - keep.length, tier.length);
-  const chosen = new Set(keep.concat(Array.from({ length: take }, (_, k) => tier[Math.floor(k * tier.length / take)])));
-  const P = all.filter(p => chosen.has(p));
+  // SKOR KESULITAN = 2 per gerbang biner (AND/OR/XOR) + 1 per NOT + 1 per input + 1 per kurung. Maks 3 gerbang.
+  // Soal yang dipakai: skor LO sampai HI (setara). Bentuknya beragam: 2 atau 3 input, 0-2 NOT, kurung 1-2.
+  const LO = 7, HI = 9, MAXGATE = 3;
+  const cnt = (n, f) => typeof n == 'string' ? 0 : (f(n) ? 1 : 0) + cnt(n.a, f) + (n.b ? cnt(n.b, f) : 0);
+  const score = n => 2 * cnt(n, x => x.op != 'NOT') + cnt(n, x => x.op == 'NOT') + vars(n).length + (str(n, 1).match(/\(/g) || []).length;
+  const chain = n => cnt(n, x => x.op != 'NOT' && [x.a, x.b].some(c => typeof c != 'string' && c.op == x.op)); // tanpa (A AND B) AND C
+  const xorNot = n => cnt(n, x => x.op == 'XOR') && cnt(n, x => x.op == 'NOT') >= 2 && cnt(n, x => x.op != 'NOT') == 1; // mudah disederhanakan
+  const dec = n => (typeof n == 'string' ? [n] : dec(n.a).flatMap(a => dec(n.b).map(b => ({ op: n.op, a, b })))).flatMap(x => [x, { op: 'NOT', a: x }]);
+  const forms = [];
+  V.forEach((z, i) => { const [x, y] = V.filter(v => v != z); // 3 input: (x op y) op z, tiap input sekali
+    for (const o1 of OPS) for (const o2 of OPS) { const inner = { op: o1, a: x, b: y }; forms.push(i ? { op: o2, a: inner, b: z } : { op: o2, a: z, b: inner }); } });
+  [['A', 'B'], ['A', 'C'], ['B', 'C']].forEach(([x, y]) => OPS.forEach(op => forms.push({ op, a: x, b: y }))); // 2 input: x op y
+  const P = forms.flatMap(f => dec(f)).filter(t => !chain(t) && !xorNot(t) && cnt(t, () => 1) <= MAXGATE)
+    .map(t => ({ tree: t, vars: vars(t), text: str(t, 1), score: score(t), bin: cnt(t, x => x.op != 'NOT'), not: cnt(t, x => x.op == 'NOT') }))
+    .filter(p => p.score >= LO && p.score <= HI).sort((a, b) => a.score - b.score);
   P.forEach((p, i) => p.id = i);
 
   function steps(n, out = [], seen = new Set()) {
@@ -53,15 +38,12 @@
   }
 
   const S = 'fill="#fff" stroke="#1d3557" stroke-width="2.5"';
-  const CORE = { NAND: 'AND', NOR: 'OR', XNOR: 'XOR' };
   const gate = (op, x, y) => {
-    const t = (dx) => `<text x="${x + dx}" y="${y + 4}" text-anchor="middle" font-size="${op.length > 3 ? 7.5 : op == 'NOT' ? 8 : 9}" font-weight="700" fill="#1d3557" stroke="none">${op}</text>`;
-    if (op == 'NOT') return `<path d="M${x - 20} ${y - 14}L${x + 8} ${y}L${x - 20} ${y + 14}Z" ${S}/><circle cx="${x + 12}" cy="${y}" r="4" ${S}/>${t(-9)}`;
-    const core = CORE[op] || op, inv = core != op;
-    const bub = inv ? `<circle cx="${x + (core == 'AND' ? 24 : 29)}" cy="${y}" r="4" ${S}/>` : '';
-    if (core == 'AND') return `<path d="M${x - 25} ${y - 20}H${x}A20 20 0 0 1 ${x} ${y + 20}H${x - 25}Z" ${S}/>${bub}${t(-12)}`;
+    const t = (dx) => `<text x="${x + dx}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="#1d3557" stroke="none">${op}</text>`;
+    if (op == 'NOT') return `<path d="M${x - 20} ${y - 14}L${x + 8} ${y}L${x - 20} ${y + 14}Z" ${S}/><circle cx="${x + 12}" cy="${y}" r="4" ${S}/>${t(-6)}`;
+    if (op == 'AND') return `<path d="M${x - 25} ${y - 20}H${x}A20 20 0 0 1 ${x} ${y + 20}H${x - 25}Z" ${S}/>${t(-8)}`;
     return `<path d="M${x - 25} ${y - 20}C${x - 5} ${y - 20} ${x + 15} ${y - 12} ${x + 25} ${y}C${x + 15} ${y + 12} ${x - 5} ${y + 20} ${x - 25} ${y + 20}C${x - 15} ${y + 8} ${x - 15} ${y - 8} ${x - 25} ${y - 20}Z" ${S}/>`
-      + (core == 'XOR' ? `<path d="M${x - 32} ${y - 20}C${x - 22} ${y - 8} ${x - 22} ${y + 8} ${x - 32} ${y + 20}" fill="none"/>` : '') + bub + t(0);
+      + (op == 'XOR' ? `<path d="M${x - 32} ${y - 20}C${x - 22} ${y - 8} ${x - 22} ${y + 8} ${x - 32} ${y + 20}" fill="none"/>` : '') + t(0);
   };
 
   // Normalisasi pohon AST agar format string ("NOT A") diubah jadi objek konsisten
@@ -78,9 +60,9 @@
     const tree = parseTree(p.tree);
 
     // Grid Y Tetap untuk Variabel A, B, C
-    const yMap = { A: 30, B: 90, C: 150 };
-    const xLabel = 18;
-    const busX = { A: 45, B: 60, C: 75 };
+    const order = []; (function w(n) { if (typeof n === 'string') order.push(n); else { w(n.a); n.b && w(n.b); } })(tree);
+    const yMap = {}, busX = {}, xLabel = 18;
+    order.forEach((v, i) => { yMap[v] = 30 + i * 60; busX[v] = 45 + i * 15; });
 
     // Render Label Input A, B, C
     p.vars.forEach(v => {
@@ -120,8 +102,8 @@
       const gateY = calcY(node);
       const gateX = 60 + level * 105;
 
-      const inX = gateX - (node.op === 'NOT' ? 20 : /XOR$/.test(node.op) ? 30 : 25);
-      const outX = gateX + ({ NOT: 12, AND: 20, NAND: 24, OR: 25, XOR: 25, NOR: 29, XNOR: 29 })[node.op];
+      const inX = gateX - (node.op === 'NOT' ? 20 : node.op === 'XOR' ? 30 : 25);
+      const outX = gateX + (node.op === 'NOT' ? 12 : 25);
 
       const children = isUnary ? [left] : [left, right];
       children.forEach((child, idx) => {
@@ -151,7 +133,7 @@
     sh += `<text x="${rootOut.x + 45}" y="${rootOut.y + 5}" text-anchor="middle" font-size="16" font-weight="700" fill="#e63946" stroke="none">Q</text>`;
 
     const W = rootOut.x + 60;
-    const H = 180;
+    const H = 60 * order.length;
 
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W * 1.15}px; display:block; margin:auto;" font-family="system-ui,sans-serif"><g stroke="#1d3557" stroke-width="2.2" fill="none" stroke-linejoin="round" stroke-linecap="round">${w}${sh}</g></svg>`;
   }

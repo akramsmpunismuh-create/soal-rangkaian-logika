@@ -10,7 +10,7 @@ input,button{padding:8px;font-size:15px}.bar{display:flex;flex-wrap:wrap;gap:8px
 <div class="bar"><input id="k" type="password" placeholder="Kunci admin"> <button id="b">Muat data</button>
 <button id="zip">Unduh semua foto (ZIP)</button> <button id="del" class="red">Hapus yang dicentang</button>
 <label>Pengurangan bila pakai bantuan: <input id="pen" type="number" value="10" min="0" max="100" style="width:64px"> poin</label>
-<a href="galeri.html" target="_blank">Galeri 120 soal</a></div>
+<a href="galeri.html" target="_blank">Galeri soal</a></div>
 <details style="margin-top:10px"><summary><b>Daftar siswa</b> (<span id="rc">0</span> nama)</summary>
 <p>Satu siswa per baris: <code>Nama, Kelas, PIN</code>. Kelas dan PIN boleh kosong (PIN misalnya nomor absen). Bisa ditempel langsung dari Excel/Google Sheets (3 kolom).</p>
 <textarea id="ro" rows="10" style="width:100%"></textarea><br><button id="rs">Simpan daftar</button></details>
@@ -39,7 +39,7 @@ async function load() {
   $('t').innerHTML = '<tr><th><input type="checkbox" id="all"><th>Nama<th>Soal<th>Bantuan gambar<th>Isian tabel<th>Nilai<th>Waktu kirim<th>Screenshot<th>Kunci jawaban</tr>' +
     rows.map(x => {
       const p = LOGIC.PUZZLES[x.idx], t = LOGIC.table(p);
-      return `<tr><td><input type="checkbox" class="sel" value="${esc(x.id)}"><td>${esc(x.name)}${x.kelas ? ' (' + esc(x.kelas) + ')' : ''}<td>${esc(p.text)}<td>${x.helped ? '<span class="h">Ya, kurangi nilai</span>' : '-'}` +
+      return `<tr><td><input type="checkbox" class="sel" value="${esc(x.id)}"><td>${esc(x.name)}${x.kelas ? ' (' + esc(x.kelas) + ')' : ''}<td>${esc(p.text)} <small>(skor ${p.score})</small><td>${x.helped ? '<span class="h">Ya, kurangi nilai</span>' : '-'}` +
         `<td>${x.ans ? score(x) + ' benar' : '-'}<td><b>${x.ans ? nilai(x) : '-'}</b><td>${x.submittedAt ? hms(x) + '<br><small>' + new Date(x.submittedAt).toLocaleDateString('en-GB') + '</small>' : '-'}<td>${pic(x.app)}` +
         `<td><details><summary>lihat</summary><pre>${t.vars.join(' ')} | ${t.cols.join(' | ')}\n${t.rows.map((r, i) => r.join(' ') + (x.ans ? '  || siswa: ' + [...x.ans.slice(i * t.cols.length, (i + 1) * t.cols.length)].join(' ') : '')).join('\n')}</pre></details></tr>`;
     }).join('');
