@@ -8,7 +8,6 @@
   const dep = n => V.filter(v => { for (let m = 0; m < 8; m++) { const e = env(m); if (ev(n, e) !== ev(n, { ...e, [v]: !e[v] })) return 1; } return 0; }).length;
   const vars = n => { const s = new Set; (function w(x) { if (typeof x == 'string') s.add(x); else { w(x.a); x.b && w(x.b); } })(n); return V.filter(v => s.has(v)); };
 
-  // semua pohon rangkaian dengan tepat g gerbang (NOT hanya di input)
   const T = [V.slice()];
   for (let g = 1; g <= 3; g++) {
     const r = [];
@@ -42,12 +41,8 @@
   const S = 'fill="#fff" stroke="#1d3557" stroke-width="2.5"';
   const gate = (op, x, y) => {
     const t = (dx) => `<text x="${x + dx}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="#1d3557" stroke="none">${op}</text>`;
-    if (op == 'NOT') {
-      return `<path d="M${x - 20} ${y - 14}L${x + 8} ${y}L${x - 20} ${y + 14}Z" ${S}/><circle cx="${x + 12}" cy="${y}" r="4" ${S}/>${t(-6)}`;
-    }
-    if (op == 'AND') {
-      return `<path d="M${x - 25} ${y - 20}H${x}A20 20 0 0 1 ${x} ${y + 20}H${x - 25}Z" ${S}/>${t(-8)}`;
-    }
+    if (op == 'NOT') return `<path d="M${x - 20} ${y - 14}L${x + 8} ${y}L${x - 20} ${y + 14}Z" ${S}/><circle cx="${x + 12}" cy="${y}" r="4" ${S}/>${t(-6)}`;
+    if (op == 'AND') return `<path d="M${x - 25} ${y - 20}H${x}A20 20 0 0 1 ${x} ${y + 20}H${x - 25}Z" ${S}/>${t(-8)}`;
     return `<path d="M${x - 25} ${y - 20}C${x - 5} ${y - 20} ${x + 15} ${y - 12} ${x + 25} ${y}C${x + 15} ${y + 12} ${x - 5} ${y + 20} ${x - 25} ${y + 20}C${x - 15} ${y + 8} ${x - 15} ${y - 8} ${x - 25} ${y - 20}Z" ${S}/>`
       + (op == 'XOR' ? `<path d="M${x - 32} ${y - 20}C${x - 22} ${y - 8} ${x - 22} ${y + 8} ${x - 32} ${y + 20}" fill="none"/>` : '') + t(0);
   };
@@ -55,11 +50,12 @@
   function svg(p) {
     const ys = {}, busX = {}; 
     let w = '', sh = '', maxY = 0;
-    const startX = 40;
+    const startX = 35;
 
+    // 1. Grid Y untuk Input A, B, C dengan spasi luas
     p.vars.forEach((v, i) => { 
-      ys[v] = 40 + i * 45;
-      busX[v] = startX + 20 + i * 14; 
+      ys[v] = 40 + i * 50; 
+      busX[v] = startX + 15 + i * 14; 
     });
 
     const walk = (n) => {
@@ -68,21 +64,36 @@
       const kids = [n.a, n.b].filter(Boolean).map(walk).sort((a, b) => a.y - b.y);
       const L = 1 + Math.max(...kids.map(k => k.L));
       
-      let y = kids.reduce((s, k) => s + k.y, 0) / kids.length;
+      // Hitung Y dasar
+      let targetY = kids.reduce((s, k) => s + k.y, 0) / kids.length;
+
+      // KUNCI PERBAIKAN: Jika gerbang terhubung langsung ke variabel tunggal (misal B di B OR (A AND C)),
+      // geser posisi Y gerbang agar kawat masuknya lurus horizontal!
+      if (kids.length === 2 && (kids[0].v || kids[1].v)) {
+        if (!kids[0].v) targetY = kids[0].y + 18;
+        else if (!kids[1].v) targetY = kids[1].y - 18;
+      }
+
+      const y = targetY;
       maxY = Math.max(maxY, y);
 
-      const x = 170 + (L - 1) * 120; 
+      // Skala X antar tingkat gerbang
+      const x = 165 + (L - 1) * 115; 
       const inX = x - (n.op == 'NOT' ? 20 : n.op == 'XOR' ? 32 : 25); 
 
+      // Hubungkan Kawat ke Gerbang
       kids.forEach((k, i) => {
-        const inY = kids.length == 1 ? y : (i === 0 ? y - 10 : y + 10);
+        const inY = kids.length == 1 ? y : (i === 0 ? y - 9 : y + 9);
 
         if (k.v) {
+          // Dari Bus Input Utama (A, B, C)
           const bx = busX[k.v];
+          // Jalur Orthogonal Siku-90 yang bersih
           w += `<path d="M${bx} ${k.y} V${inY} H${inX}"/>`;
           w += `<circle cx="${bx}" cy="${k.y}" r="3" fill="#1d3557"/>`;
         } else {
-          const midX = k.x + (inX - k.x) / 2;
+          // Dari Gerbang Sebelumnya
+          const midX = k.x + 15 + (L * 8); // Offset channel vertikal terpisah
           w += `<path d="M${k.x} ${k.y} H${midX} V${inY} H${inX}"/>`;
         }
       });
@@ -94,18 +105,20 @@
 
     const r = walk(p.tree);
 
+    // Label Input A, B, C
     p.vars.forEach(v => { 
       w += `<path d="M${startX} ${ys[v]} H${busX[v]}"/>`; 
       sh += `<text x="${startX - 10}" y="${ys[v] + 5}" text-anchor="middle" font-size="15" font-weight="700" fill="#1d3557" stroke="none">${v}</text>`; 
     });
 
-    w += `<path d="M${r.x} ${r.y} H${r.x + 30}"/>`;
-    sh += `<text x="${r.x + 45}" y="${r.y + 5}" text-anchor="middle" font-size="16" font-weight="700" fill="#e63946" stroke="none">Q</text>`;
+    // Label Output Q
+    w += `<path d="M${r.x} ${r.y} H${r.x + 25}"/>`;
+    sh += `<text x="${r.x + 38}" y="${r.y + 5}" text-anchor="middle" font-size="16" font-weight="700" fill="#e63946" stroke="none">Q</text>`;
 
-    const W = r.x + 65; 
+    const W = r.x + 55; 
     const H = Math.max(maxY + 35, ys[p.vars[p.vars.length - 1]] + 30);
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W * 1.2}px; display:block; margin:auto;" font-family="system-ui,sans-serif"><g stroke="#1d3557" stroke-width="2.2" fill="none" stroke-linejoin="round" stroke-linecap="round">${w}${sh}</g></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W * 1.15}px; display:block; margin:auto;" font-family="system-ui,sans-serif"><g stroke="#1d3557" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round">${w}${sh}</g></svg>`;
   }
 
   root.LOGIC = { PUZZLES: P, svg, table };
