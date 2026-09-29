@@ -1,28 +1,78 @@
 <!doctype html>
 <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Rekap tugas</title>
-<style>body{font:15px system-ui,sans-serif;margin:16px;color:#1d2b3a}table{border-collapse:collapse;width:100%}
+<style>body{font:15px system-ui,sans-serif;margin:16px;color:#1d2b3a}table{border-collapse:collapse;width:100%;margin-top:10px}
 td,th{border:1px solid #cfdbe6;padding:6px;text-align:left;vertical-align:top}th{background:#eaf3fb}
 img{max-width:110px;max-height:110px;display:block}pre{margin:6px 0 0}.h{color:#c62828;font-weight:700}
-input,button{padding:8px;font-size:15px}</style></head><body>
+input,button{padding:8px;font-size:15px}.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.red{background:#c62828;color:#fff;border:0;border-radius:6px;cursor:pointer}</style></head><body>
 <h1>Rekap tugas</h1>
-<input id="k" type="password" placeholder="Kunci admin"> <button id="b">Muat data</button>
+<div class="bar"><input id="k" type="password" placeholder="Kunci admin"> <button id="b">Muat data</button>
+<button id="zip">Unduh semua foto (ZIP)</button> <button id="del" class="red">Hapus yang dicentang</button></div>
 <p id="s"></p><table id="t"></table>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="puzzles.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
-const pic = u => u ? `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt=""></a>` : 'belum';
+const pic = u => u ? `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt=""></a>` : '-';
+const H = () => ({ 'x-admin-key': $('k').value, 'Content-Type': 'application/json' });
+const keyOf = p => LOGIC.table(p).rows.map(r => r[r.length - 1]).join('');
+const score = x => { const k = keyOf(LOGIC.PUZZLES[x.idx]); return [...k].filter((c, i) => c === x.ans[i]).length + '/' + k.length; };
+let rows = [];
+
 async function load() {
-  const r = await fetch('/api/admin', { headers: { 'x-admin-key': $('k').value } }), d = await r.json();
+  const r = await fetch('/api/admin', { headers: H() }), d = await r.json();
   if (!r.ok) return $('s').textContent = d.error;
-  $('s').textContent = `${d.rows.length} siswa sudah mengambil soal, sisa soal: ${d.left}`;
-  $('t').innerHTML = '<tr><th>Nama<th>Soal<th>Bantuan gambar<th>Screenshot<th>Tabel kertas<th>Kunci jawaban</tr>' +
-    d.rows.sort((a, b) => a.name.localeCompare(b.name)).map(x => {
+  rows = d.rows.sort((a, b) => a.name.localeCompare(b.name));
+  $('s').textContent = `${rows.length} siswa sudah mengambil soal, sisa soal: ${d.left}`;
+  $('t').innerHTML = '<tr><th><input type="checkbox" id="all"><th>Nama<th>Soal<th>Bantuan gambar<th>Isian tabel<th>Screenshot<th>Foto tabel<th>Kunci jawaban</tr>' +
+    rows.map(x => {
       const p = LOGIC.PUZZLES[x.idx], t = LOGIC.table(p);
-      return `<tr><td>${esc(x.name)}<td>${esc(p.text)}<td>${x.helped ? '<span class="h">Ya, kurangi nilai</span>' : '-'}<td>${pic(x.app)}<td>${pic(x.table)}` +
-        `<td><details><summary>lihat</summary><pre>${t.vars.join(' ')} Q\n${t.rows.map(r => r.join(' ')).join('\n')}</pre></details></tr>`;
+      return `<tr><td><input type="checkbox" class="sel" value="${esc(x.id)}"><td>${esc(x.name)}<td>${esc(p.text)}<td>${x.helped ? '<span class="h">Ya, kurangi nilai</span>' : '-'}` +
+        `<td>${x.ans ? score(x) + ' benar' : '-'}<td>${pic(x.app)}<td>${pic(x.table)}` +
+        `<td><details><summary>lihat</summary><pre>${t.vars.join(' ')} Q${x.ans ? ' | siswa' : ''}\n${t.rows.map((r, i) => r.join(' ') + (x.ans ? ' | ' + x.ans[i] : '')).join('\n')}</pre></details></tr>`;
     }).join('');
+  $('all').onchange = e => document.querySelectorAll('.sel').forEach(c => c.checked = e.target.checked);
 }
+
 $('b').onclick = load;
+$('k').onkeydown = e => e.key === 'Enter' && load();
+
+$('del').onclick = async () => {
+  const ids = [...document.querySelectorAll('.sel:checked')].map(c => c.value);
+  if (!ids.length) return alert('Centang dulu siswa yang mau dihapus.');
+  const names = rows.filter(x => ids.includes(x.id)).map(x => x.name);
+  if (!confirm(`PERINGATAN!\n${ids.length} siswa akan dihapus PERMANEN beserta foto dan jawabannya. Soal mereka dikembalikan ke daftar soal. Tindakan ini tidak bisa dibatalkan.\n\n${names.slice(0, 15).join('\n')}${names.length > 15 ? '\n...' : ''}\n\nLanjutkan?`)) return;
+  if (ids.length >= 5 && prompt('Ketik HAPUS (huruf besar) untuk memastikan:') !== 'HAPUS') return;
+  const r = await fetch('/api/admin', { method: 'POST', headers: H(), body: JSON.stringify({ ids }) }), d = await r.json();
+  if (!r.ok) return $('s').textContent = d.error;
+  await load(); $('s').textContent += ` (${d.deleted} siswa dihapus)`;
+};
+
+$('zip').onclick = async () => {
+  try {
+    if (!rows.length) await load();
+    const z = new JSZip(), jobs = [], c = v => { v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+    const csv = ['nama,soal,bantuan,skor_isian,jawaban_isian,waktu_kirim'];
+    rows.forEach(x => {
+      const p = LOGIC.PUZZLES[x.idx], base = (x.name.replace(/[^\p{L}\p{N} _-]+/gu, '').trim().replace(/\s+/g, '_') || 'siswa') + '_soal-' + String(x.idx + 1).padStart(3, '0');
+      const ext = u => u.split('?')[0].split('.').pop();
+      if (x.app) jobs.push([x.app, `${base}_screenshot.${ext(x.app)}`]);
+      if (x.table) jobs.push([x.table, `${base}_tabel.${ext(x.table)}`]);
+      csv.push([c(x.name), c(p.text), x.helped ? 'ya' : 'tidak', x.ans ? score(x) : '', x.ans || '', x.submittedAt ? new Date(x.submittedAt).toLocaleString('id-ID') : 'belum'].join(','));
+    });
+    const total = jobs.length; let n = 0;
+    const worker = async () => { while (jobs.length) {
+      const [u, name] = jobs.pop(), r = await fetch('/api/admin?img=' + encodeURIComponent(u), { headers: H() });
+      if (!r.ok) throw new Error('Gagal mengunduh ' + name);
+      z.file(name, await r.arrayBuffer()); $('s').textContent = `Mengunduh foto ${++n}/${total}...`;
+    } };
+    await Promise.all([1, 2, 3, 4].map(worker));
+    z.file('rekap.csv', '\ufeff' + csv.join('\n'));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await z.generateAsync({ type: 'blob', compression: 'STORE' })); a.download = 'tugas-logika.zip'; a.click();
+    $('s').textContent = `Selesai: ${total} foto + rekap.csv.`;
+  } catch (e) { $('s').textContent = 'Gagal: ' + e.message; }
+};
 </script></body></html>

@@ -12,6 +12,7 @@ h1,h2,h3{margin:0 0 8px}h1{font-size:24px}h2{font-size:20px}h3{font-size:17px}
 input[type=text]{width:100%;padding:12px;font-size:17px;border:2px solid #b9d4ea;border-radius:10px;margin:8px 0}
 button,.app{display:block;width:100%;padding:13px;font:700 16px system-ui;border:0;border-radius:10px;cursor:pointer;color:#fff;background:#3b82c4;text-align:center;text-decoration:none}
 button:disabled{opacity:.5}
+.link{display:inline;width:auto;padding:0;background:none;color:#3b82c4;text-decoration:underline;font-weight:600;font-size:14px}
 .ex{font-size:26px;font-weight:800;text-align:center;padding:12px 6px;background:#eef6fd;border-radius:10px;margin:8px 0;word-break:break-word}
 .apps{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 .app{background:#e8f1f9;color:#1d3b5a;font-size:14px}
@@ -20,6 +21,9 @@ button:disabled{opacity:.5}
 .up{display:block;border:2px dashed #b9d4ea;border-radius:10px;padding:10px;margin:0 0 10px;font-weight:600}
 .up input{display:block;margin-top:6px;max-width:100%}.up img{display:block;max-width:100%;max-height:180px;margin-top:8px;border-radius:8px}
 #sub{background:#3daf6a}
+.tt{border-collapse:collapse;margin:8px auto 14px}.tt td,.tt th{border:1px solid #b9d4ea;padding:6px 16px;text-align:center;font-size:18px}.tt th{background:#eef6fd}
+.q{display:inline-block;width:48px;padding:6px 0;background:#e8f1f9;color:#1d3b5a;font-size:18px}
+.done{background:#fff3cd;border:2px solid #f5b301;border-radius:12px;padding:14px;font-size:18px;margin:0 0 14px}
 #err,#msg{margin:8px 0 0;font-weight:600}#err{color:#c62828}
 :focus-visible{outline:3px solid #f5b301;outline-offset:2px}
 </style></head><body>
@@ -34,6 +38,8 @@ button:disabled{opacity:.5}
 
 <section id="task" hidden>
   <h2 id="hi"></h2>
+  <p><button id="out" class="link">Bukan kamu? Ganti nama</button></p>
+  <div id="done" class="done" hidden><b>Tugas sudah terkirim.</b> Sekarang <b>kumpulkan HP kamu ke guru</b>.</div>
   <div class="card">
     <h3>Tugas hari ini</h3>
     <div>Selesaikan rangkaian logika:</div>
@@ -51,9 +57,11 @@ button:disabled{opacity:.5}
     <div id="fig" hidden></div>
   </div>
   <div class="card">
-    <h3>Upload jawaban</h3>
-    <label class="up">Screenshot aplikasi (simulator)<input type="file" id="f1" accept="image/*"><img id="p1" alt=""></label>
-    <label class="up">Foto tabel kebenaran (kertas)<input type="file" id="f2" accept="image/*"><img id="p2" alt=""></label>
+    <h3>Jawaban</h3>
+    <p>Isi tabel kebenaran di bawah (ketuk tanda ? di kolom Q untuk mengganti 0 atau 1), <b>atau</b> upload foto tabel dari kertas. Boleh keduanya.</p>
+    <div id="tt"></div>
+    <label class="up">Screenshot aplikasi (opsional)<input type="file" id="f1" accept="image/*"><img id="p1" alt=""></label>
+    <label class="up">Foto tabel kebenaran di kertas (opsional jika tabel di atas sudah diisi)<input type="file" id="f2" accept="image/*"><img id="p2" alt=""></label>
     <button id="sub">Kirim tugas</button><p id="msg" role="status"></p>
   </div>
 </section>
@@ -61,7 +69,8 @@ button:disabled{opacity:.5}
 <script src="puzzles.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-let me, name, imgs = {};
+let me, name, imgs = {}, dirty = false, A = [];
+addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 const api = async b => {
   const r = await fetch('/api/task', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, ...b }) });
   const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Gagal terhubung'); return d;
@@ -75,14 +84,38 @@ function show(d) {
   $('ex').textContent = p.text;
   $('inp').textContent = `${p.vars.length} input (${p.vars.join(', ')}), jadi tabel kebenaran punya ${2 ** p.vars.length} baris.`;
   if (d.helped) fig();
-  if (d.app) $('msg').textContent = 'Tugas sudah terkirim. Kamu bisa mengirim ulang jika ada yang salah.';
+  initTable();
+  if (d.app) $('p1').src = d.app;
+  if (d.table) $('p2').src = d.table;
+  done();
 }
-$('nm').value = localStorage.nm || '';
-$('go').onclick = async () => {
-  name = $('nm').value; $('err').textContent = ''; $('go').disabled = true;
-  try { show(await api({ action: 'start' })); localStorage.nm = name; } catch (e) { $('err').textContent = e.message; }
+function initTable() {
+  const t = LOGIC.table(P()), n = t.rows.length;
+  let sv = {}; try { sv = JSON.parse(localStorage.A || '{}'); } catch {}
+  A = me.ans ? [...me.ans].map(Number) : sv.n === name && sv.a && sv.a.length === n ? sv.a : Array(n).fill(null);
+  $('tt').innerHTML = `<table class="tt"><tr>${t.vars.map(v => `<th>${v}</th>`).join('')}<th>Q</th></tr>` +
+    t.rows.map((r, i) => `<tr>${r.slice(0, -1).map(b => `<td>${b}</td>`).join('')}<td><button type="button" class="q" data-i="${i}">${A[i] ?? '?'}</button></td></tr>`).join('') + '</table>';
+  $('tt').onclick = e => {
+    const b = e.target.closest('.q'); if (!b) return;
+    const i = +b.dataset.i; A[i] = A[i] === 1 ? 0 : 1; b.textContent = A[i];
+    try { localStorage.A = JSON.stringify({ n: name, a: A }); } catch {} // aman jika di-refresh
+  };
+}
+function done() {
+  if (!me.submittedAt) return;
+  $('done').hidden = false; $('msg').textContent = 'Tugas terkirim. Kamu masih bisa mengirim ulang jika ada yang salah.';
+}
+const start = async n => {
+  name = n; $('err').textContent = ''; $('go').disabled = true;
+  try { show(await api({ action: 'start' })); try { localStorage.nm = name; } catch {} }
+  catch (e) { $('login').hidden = false; $('err').textContent = e.message; }
   $('go').disabled = false;
 };
+let saved = ''; try { saved = localStorage.nm || ''; } catch {}
+$('nm').value = saved;
+$('go').onclick = () => start($('nm').value);
+$('out').onclick = () => { try { localStorage.removeItem('nm'); } catch {} location.reload(); };
+if (saved) { $('login').hidden = true; start(saved); } // refresh: langsung kembali ke soal yang sama
 $('help').onclick = async () => {
   if (!confirm('Menampilkan gambar rangkaian akan MENGURANGI NILAI. Tetap tampilkan?')) return;
   try { me = await api({ action: 'help' }); fig(); } catch (e) { $('msg').textContent = e.message; }
@@ -95,13 +128,17 @@ const shrink = f => new Promise((ok, no) => {
 });
 ['f1', 'f2'].forEach(k => $(k).onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
-  try { imgs[k] = await shrink(f); $('p' + k[1]).src = imgs[k]; } catch (x) { $('msg').textContent = x.message; }
+  try { imgs[k] = await shrink(f); $('p' + k[1]).src = imgs[k]; dirty = true; } catch (x) { $('msg').textContent = x.message; }
 });
 $('sub').onclick = async () => {
-  if (!imgs.f1 || !imgs.f2) return $('msg').textContent = 'Pilih kedua foto dulu.';
+  const full = A.length && A.every(v => v === 0 || v === 1);
+  if (A.some(v => v !== null) && !full) return $('msg').textContent = 'Tabel kebenaran belum terisi semua baris.';
+  if (!full && !imgs.f2 && !me.table && !me.ans) return $('msg').textContent = 'Isi tabel kebenaran di atas atau upload foto tabelnya.';
   $('sub').disabled = true; $('msg').textContent = 'Mengirim...';
-  try { me = await api({ action: 'submit', app: imgs.f1, table: imgs.f2 }); $('msg').textContent = 'Tugas terkirim. Terima kasih!'; }
-  catch (e) { $('msg').textContent = e.message; }
+  try {
+    me = await api({ action: 'submit', app: imgs.f1, table: imgs.f2, ans: full ? A.join('') : undefined });
+    dirty = false; imgs = {}; done(); $('done').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) { $('msg').textContent = e.message; }
   $('sub').disabled = false;
 };
 </script></body></html>
