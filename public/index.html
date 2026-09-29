@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tugas Rangkaian Logika</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#eaf3fb;font:16px/1.45 system-ui,sans-serif;color:#1d2b3a}
+header{background:#5aa9e6;color:#fff;padding:14px 18px;font-weight:700;letter-spacing:.3px}
+main{max-width:520px;margin:0 auto;padding:16px}
+.card{background:#fff;border-radius:14px;padding:16px;margin:0 0 14px;box-shadow:0 2px 8px #1d3b5a1a}
+h1,h2,h3{margin:0 0 8px}h1{font-size:24px}h2{font-size:20px}h3{font-size:17px}
+input[type=text]{width:100%;padding:12px;font-size:17px;border:2px solid #b9d4ea;border-radius:10px;margin:8px 0}
+button,.app{display:block;width:100%;padding:13px;font:700 16px system-ui;border:0;border-radius:10px;cursor:pointer;color:#fff;background:#3b82c4;text-align:center;text-decoration:none}
+button:disabled{opacity:.5}
+.ex{font-size:26px;font-weight:800;text-align:center;padding:12px 6px;background:#eef6fd;border-radius:10px;margin:8px 0;word-break:break-word}
+.apps{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.app{background:#e8f1f9;color:#1d3b5a;font-size:14px}
+.help{background:#f5b301;color:#3d2f00}
+.warn{font-size:14px;color:#8a5a00;margin:6px 0 0}
+.up{display:block;border:2px dashed #b9d4ea;border-radius:10px;padding:10px;margin:0 0 10px;font-weight:600}
+.up input{display:block;margin-top:6px;max-width:100%}.up img{display:block;max-width:100%;max-height:180px;margin-top:8px;border-radius:8px}
+#sub{background:#3daf6a}
+#err,#msg{margin:8px 0 0;font-weight:600}#err{color:#c62828}
+:focus-visible{outline:3px solid #f5b301;outline-offset:2px}
+</style></head><body>
+<header>SMP UNISMUH MAKASSAR</header>
+<main>
+<section id="login" class="card">
+  <h1>Tugas Rangkaian Logika</h1>
+  <p>Tulis nama lengkapmu untuk mendapat soal. Setiap siswa mendapat soal yang berbeda.</p>
+  <input id="nm" type="text" placeholder="Nama lengkap (contoh: Ani Lestari IXA)" autocomplete="name">
+  <button id="go">Ambil soal</button><p id="err"></p>
+</section>
+
+<section id="task" hidden>
+  <h2 id="hi"></h2>
+  <div class="card">
+    <h3>Tugas hari ini</h3>
+    <div>Selesaikan rangkaian logika:</div>
+    <div class="ex" id="ex"></div>
+    <div id="inp"></div>
+    <p>Simulasikan di aplikasi, lalu buat tabel kebenaran di kertas.</p>
+    <div class="apps">
+      <a class="app" target="_blank" rel="noopener" href="https://play.google.com/store/search?q=Logic%20Circuit%20Simulator%20Pro&c=apps">Logic Circuit Simulator Pro</a>
+      <a class="app" target="_blank" rel="noopener" href="https://play.google.com/store/search?q=Smart%20Logic%20Simulator&c=apps">Smart Logic Simulator</a>
+    </div>
+  </div>
+  <div class="card">
+    <button id="help" class="help">Tombol Bantuan: tampilkan gambar rangkaian</button>
+    <p class="warn" id="warn">Menampilkan gambar akan mengurangi nilai.</p>
+    <div id="fig" hidden></div>
+  </div>
+  <div class="card">
+    <h3>Upload jawaban</h3>
+    <label class="up">Screenshot aplikasi (simulator)<input type="file" id="f1" accept="image/*"><img id="p1" alt=""></label>
+    <label class="up">Foto tabel kebenaran (kertas)<input type="file" id="f2" accept="image/*"><img id="p2" alt=""></label>
+    <button id="sub">Kirim tugas</button><p id="msg" role="status"></p>
+  </div>
+</section>
+</main>
+<script src="puzzles.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let me, name, imgs = {};
+const api = async b => {
+  const r = await fetch('/api/task', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, ...b }) });
+  const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Gagal terhubung'); return d;
+};
+const P = () => LOGIC.PUZZLES[me.idx];
+function fig() { $('fig').innerHTML = LOGIC.svg(P()); $('fig').hidden = false; $('help').hidden = true; $('warn').textContent = 'Kamu memakai bantuan gambar, jadi nilai dikurangi.'; }
+function show(d) {
+  me = d; const p = P();
+  $('login').hidden = true; $('task').hidden = false;
+  $('hi').textContent = 'Halo, ' + d.name;
+  $('ex').textContent = p.text;
+  $('inp').textContent = `${p.vars.length} input (${p.vars.join(', ')}), jadi tabel kebenaran punya ${2 ** p.vars.length} baris.`;
+  if (d.helped) fig();
+  if (d.app) $('msg').textContent = 'Tugas sudah terkirim. Kamu bisa mengirim ulang jika ada yang salah.';
+}
+$('nm').value = localStorage.nm || '';
+$('go').onclick = async () => {
+  name = $('nm').value; $('err').textContent = ''; $('go').disabled = true;
+  try { show(await api({ action: 'start' })); localStorage.nm = name; } catch (e) { $('err').textContent = e.message; }
+  $('go').disabled = false;
+};
+$('help').onclick = async () => {
+  if (!confirm('Menampilkan gambar rangkaian akan MENGURANGI NILAI. Tetap tampilkan?')) return;
+  try { me = await api({ action: 'help' }); fig(); } catch (e) { $('msg').textContent = e.message; }
+};
+const shrink = f => new Promise((ok, no) => {
+  const i = new Image();
+  i.onload = () => { const s = Math.min(1, 1600 / Math.max(i.width, i.height)), c = document.createElement('canvas');
+    c.width = i.width * s; c.height = i.height * s; c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', .8)); };
+  i.onerror = () => no(new Error('File itu bukan gambar.')); i.src = URL.createObjectURL(f);
+});
+['f1', 'f2'].forEach(k => $(k).onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { imgs[k] = await shrink(f); $('p' + k[1]).src = imgs[k]; } catch (x) { $('msg').textContent = x.message; }
+});
+$('sub').onclick = async () => {
+  if (!imgs.f1 || !imgs.f2) return $('msg').textContent = 'Pilih kedua foto dulu.';
+  $('sub').disabled = true; $('msg').textContent = 'Mengirim...';
+  try { me = await api({ action: 'submit', app: imgs.f1, table: imgs.f2 }); $('msg').textContent = 'Tugas terkirim. Terima kasih!'; }
+  catch (e) { $('msg').textContent = e.message; }
+  $('sub').disabled = false;
+};
+</script></body></html>

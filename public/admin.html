@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rekap tugas</title>
+<style>body{font:15px system-ui,sans-serif;margin:16px;color:#1d2b3a}table{border-collapse:collapse;width:100%}
+td,th{border:1px solid #cfdbe6;padding:6px;text-align:left;vertical-align:top}th{background:#eaf3fb}
+img{max-width:110px;max-height:110px;display:block}pre{margin:6px 0 0}.h{color:#c62828;font-weight:700}
+input,button{padding:8px;font-size:15px}</style></head><body>
+<h1>Rekap tugas</h1>
+<input id="k" type="password" placeholder="Kunci admin"> <button id="b">Muat data</button>
+<p id="s"></p><table id="t"></table>
+<script src="puzzles.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
+const pic = u => u ? `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt=""></a>` : 'belum';
+async function load() {
+  const r = await fetch('/api/admin', { headers: { 'x-admin-key': $('k').value } }), d = await r.json();
+  if (!r.ok) return $('s').textContent = d.error;
+  $('s').textContent = `${d.rows.length} siswa sudah mengambil soal, sisa soal: ${d.left}`;
+  $('t').innerHTML = '<tr><th>Nama<th>Soal<th>Bantuan gambar<th>Screenshot<th>Tabel kertas<th>Kunci jawaban</tr>' +
+    d.rows.sort((a, b) => a.name.localeCompare(b.name)).map(x => {
+      const p = LOGIC.PUZZLES[x.idx], t = LOGIC.table(p);
+      return `<tr><td>${esc(x.name)}<td>${esc(p.text)}<td>${x.helped ? '<span class="h">Ya, kurangi nilai</span>' : '-'}<td>${pic(x.app)}<td>${pic(x.table)}` +
+        `<td><details><summary>lihat</summary><pre>${t.vars.join(' ')} Q\n${t.rows.map(r => r.join(' ')).join('\n')}</pre></details></tr>`;
+    }).join('');
+}
+$('b').onclick = load;
+</script></body></html>
