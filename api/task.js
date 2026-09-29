@@ -1,10 +1,9 @@
 const { r, B, TOTAL, norm } = require('../lib/db');
-const { put } = require('@vercel/blob');
 
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return res.status(405).end();
-    const { action, name, app, table } = req.body || {}, id = norm(name);
+    const { action, name, app, table, ans } = req.body || {}, id = norm(name);
     if (id.length < 3) return res.status(400).json({ error: 'Tulis nama lengkap (minimal 3 huruf).' });
     const key = `${B}:s:${id}`;
     let s = await r.get(key);
@@ -22,6 +21,7 @@ module.exports = async (req, res) => {
     if (action === 'help' && !s.helped) { s.helped = Date.now(); await r.set(key, s); }
 
     if (action === 'submit') {
+      const { put } = await import('@vercel/blob'); // SDK baru: autentikasi OIDC otomatis
       const save = async (d, k) => {
         const m = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(d || '');
         if (!m) throw new Error(`Foto ${k} tidak valid.`);
@@ -30,8 +30,11 @@ module.exports = async (req, res) => {
         const path = `${B}/${id.replace(/[^a-z0-9]+/g, '-')}/${k}.${m[1]}`;
         return (await put(path, buf, { access: 'public', addRandomSuffix: true, contentType: 'image/' + m[1] })).url;
       };
-      s.app = await save(app, 'screenshot');
-      s.table = await save(table, 'tabel');
+      if (ans && !/^[01]{4,8}$/.test(ans)) return res.status(400).json({ error: 'Format tabel tidak valid.' });
+      if (!ans && !table && !s.ans && !s.table) return res.status(400).json({ error: 'Isi tabel kebenaran atau upload foto tabelnya.' });
+      if (app) s.app = await save(app, 'screenshot');
+      if (table) s.table = await save(table, 'tabel');
+      if (ans) s.ans = ans;
       s.submittedAt = Date.now();
       await r.set(key, s);
     }
